@@ -1,0 +1,23 @@
+# Ignore checkpoints and heavy outputs
+checkpoints/
+**/checkpoints/
+Logs/
+logs/
+inference_results/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Data/cache
+cache/
+*.pt
+*.pth
+*.ckpt
+
+# Misc
+.env
+.DS_Store
+
+# Jupyter notebooks
+*.ipynb

@@ -1,0 +1,41 @@
+"""
+CRITICAL DISCOVERY: Loss DOES Correlate with Quality
+======================================================
+
+Stage0_best_trial.pt (loss=1.68):
+  ✓ EXCELLENT output: "Lions are large carnivorous," her mommy explained. They help create things..."
+  ✓ Proper grammar and narrative flow
+  ✓ Makes semantic sense
+
+Stage0_best.pt (loss=5.97):
+  ✗ BAD output: "She make to take..." "I are the..."
+  ✗ Grammar errors, incoherent
+  ✗ Same as current Stage1 problem
+
+Stage1_best.pt (loss=3.56):
+  ✗ POOR output: Semantic drift, factual errors
+  ✗ Intermediate loss, intermediate quality
+
+KEY INSIGHT:
+============
+✓ Loss DOES predict generation quality
+✗ But Stage1 may have been trained from wrong Stage0 checkpoint
+✗ The great Stage0 checkpoint (loss 1.68) exists but wasn't used for Stage1!
+
+THE REAL PROBLEM:
+=================
+Stage1 likely started from stage0_best.pt (loss 5.97) instead of
+stage0_best_1st_trial.pt (loss 1.68)
+
+SOLUTION:
+=========
+Retrain Stage1, but starting from this command:
+  
+  python train.py --stage 1 --config configs/stage1.yaml \\
+      --prev_checkpoint checkpoints/stage0_best_1st_trial.pt
+
+This should produce MUCH better results since we're starting from
+a model with loss 1.68 (which generates great text) rather than 5.97.
+"""
+
+print(__doc__)

@@ -1,0 +1,16 @@
+# Stage 0 — TinyStories
+stage: 0
+dataset: tinystories
+seq_len: 768
+max_tokens: 200_000_000
+batch_size: 32
+eval_interval: 500
+patience: 5
+min_delta: 0.01
+spike_threshold: 0.5
+spike_window: 20
+learning_rate: 3e-4
+lr_warmup_steps: 500
+lr_min: 3e-5
+weight_decay: 0.1
+grad_clip: 1.0

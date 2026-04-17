@@ -1,0 +1,23 @@
+# Stage 0 (Full) — TinyStories with Curriculum Learning across entire 2.1 Million Database
+stage: "full_dataset"
+dataset: tinystories
+val_key: s0
+seq_len: 256
+max_tokens: 450_000_000
+batch_size: 32
+eval_interval: 500
+patience: 5
+min_delta: 0.01
+spike_threshold: 0.5
+spike_window: 20
+learning_rate: 3e-4
+lr_warmup_steps: 1000
+lr_min: 3e-5
+weight_decay: 0.1
+grad_clip: 1.0
+
+# ── Curriculum settings ──────────────────────────────────────────────────────
+# Modes: random | length | perplexity | adaptive
+curriculum_mode: adaptive
+initial_fraction: 0.15
+scores_path: curriculum_scores.npy
