@@ -1,11 +1,19 @@
 """
 capability_logger.py - Tracks SLM multi-stage curriculum progress.
 
-Evaluates the model across multiple domains (TinyStories, ROCStories,
-Children Stories, SimpleWiki, WritingPrompts) and generates stylized text
-to document capability acquisition.
+Evaluates a trained checkpoint across multiple validation domains and
+appends a human-readable report plus stylized generation probes to
+`docs/curriculum_capabilities.md`.
 
-Output is appended to docs/curriculum_capabilities.md
+Primary outputs:
+    - Per-domain validation loss and perplexity (s0, s1, roc, simple, child, wp)
+    - Stylized generation probes for quick qualitative checks
+    - If the checkpoint contains an `anchor_val`, computes and reports
+        TinyStories forgetting relative to that anchor baseline.
+
+This script is intended to be run at the end of an expansion stage (it is
+automatically invoked by `train_expansion.py` on the best checkpoint) but can
+also be run manually for debugging or comparison.
 """
 
 import os
@@ -106,6 +114,18 @@ def run_capability_logging(checkpoint_path, tokenizer_path, stage_name=""):
         for key, metrics in results.items():
             domain_name = domain_mapping.get(key, key)
             f.write(f"| {domain_name} | `{key}` | {metrics['loss']:.3f} | {metrics['ppl']:.1f} |\n")
+
+        # Report TinyStories forgetting vs checkpoint anchor if present
+        try:
+            import torch as _torch
+            ckpt = _torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+            anchor = ckpt.get('anchor_val', None)
+            if anchor is not None and 's0' in results:
+                ts_loss = results['s0']['loss']
+                forgetting = (ts_loss - anchor) / max(anchor, 1e-6)
+                f.write(f"\n**TinyStories forgetting**: {forgetting*100:.2f}% (vs anchor {anchor:.4f})\n\n")
+        except Exception:
+            pass
             
         f.write("\n### Stylistic Probes\n\n")
         for domain, items in generations.items():

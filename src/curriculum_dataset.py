@@ -2,17 +2,28 @@
 curriculum_dataset.py — Curriculum-aware dataset and competence scheduler.
 
 Components:
-  CompetenceScheduler  — Adaptive difficulty expansion based on val loss
-  CurriculumStageDataset — Dataset that serves stories filtered by difficulty
+    - `CompetenceScheduler` — adaptive pacing based on validation improvement rates
+    - `CurriculumStageDataset` — supplies token chunks filtered/sorted by difficulty
 
-Supports 4 modes:
-  random     — No curriculum (baseline, standard random shuffle)
-  length     — Sort by token length (ipynb's naive approach)
-  perplexity — Sort by perplexity-based composite score (fixed linear schedule)
-  adaptive   — Perplexity-based with competence-aware pacing (recommended)
+Supported modes:
+    - `random`     — No curriculum (random shuffle)
+    - `length`     — Order by chunk length with fixed schedule
+    - `perplexity` — Order by precomputed difficulty scores
+    - `adaptive`   — Perplexity-based with `CompetenceScheduler` (recommended)
+
+New features:
+    - Replay pool support: the dataset can load pre-cached chunks from prior
+        stage caches and draw a controlled fraction of samples from that pool.
+        Use `build(..., replay_sources=[...], initial_replay_fraction=...)` to load
+        replay chunks from cache and `set_replay_fraction()` to adjust sampling.
+    - Anchor injection: easiest-chunk anchor pool is sampled at `anchor_frac`
+        frequency to provide continual exposure to simpler examples and mitigate
+        catastrophic forgetting.
 
 Usage:
-  from curriculum_dataset import CurriculumStageDataset, CompetenceScheduler
+    from src.curriculum_dataset import CurriculumStageDataset, CompetenceScheduler
+    ds = CurriculumStageDataset().build(..., mode='adaptive')
+
 """
 
 import os
@@ -212,6 +223,8 @@ class CurriculumStageDataset(Dataset):
         mode: str = "adaptive",
         initial_fraction: float = 0.15,
         stage_name: str = "",
+        replay_sources: Optional[list] = None,
+        initial_replay_fraction: float = 0.0,
     ) -> "CurriculumStageDataset":
         """
         Load or build the chunked dataset, then set up curriculum ordering.
@@ -296,6 +309,30 @@ class CurriculumStageDataset(Dataset):
         self.anchor_count = max(1, int(n_chunks * 0.05)) # bottom 5%
         print(f"[curriculum] Anchor pool: {self.anchor_count:,} chunks (freq: {self.anchor_frac*100:.0f}%)")
 
+        # -- Replay pool support -------------------------------------------------
+        self.replay_chunks = []
+        self.replay_frac = float(initial_replay_fraction)
+        if replay_sources:
+            for src in replay_sources:
+                # Allow either a dataset name (train_<name>_seq{seq_len}.pkl) or a direct .pkl path
+                if os.path.isabs(src) or src.endswith('.pkl'):
+                    cand = src if os.path.isabs(src) else os.path.join(cache_dir, src)
+                else:
+                    cand = os.path.join(cache_dir, f"train_{src}_seq{seq_len}.pkl")
+
+                if os.path.exists(cand):
+                    try:
+                        with open(cand, 'rb') as f:
+                            other_chunks = pickle.load(f)
+                        self.replay_chunks.extend(other_chunks)
+                        print(f"[curriculum] Loaded replay pool from {cand} ({len(other_chunks):,} chunks)")
+                    except Exception as e:
+                        print(f"[curriculum] Failed to load replay source {cand}: {e}")
+                else:
+                    print(f"[curriculum] Replay source not found: {cand}")
+
+            print(f"[curriculum] Replay pool size: {len(self.replay_chunks):,}  initial_frac={self.replay_frac:.3f}")
+
         return self
 
     def _map_scores_to_chunks(self, n_chunks: int) -> list:
@@ -361,6 +398,12 @@ class CurriculumStageDataset(Dataset):
         return self.eligible_count
 
     def __getitem__(self, idx):
+        # Replay sampling: with probability replay_frac sample from replay pool
+        if self.replay_chunks and random.random() < getattr(self, 'replay_frac', 0.0):
+            actual_idx = random.randint(0, len(self.replay_chunks) - 1)
+            chunk = torch.tensor(self.replay_chunks[actual_idx], dtype=torch.long)
+            return chunk[:-1], chunk[1:]
+
         # Anchor injection: chance to fetch from the easiest 5% pool
         if self.mode != "random" and random.random() < self.anchor_frac:
             actual_idx = self.sorted_indices[random.randint(0, self.anchor_count - 1)]
@@ -373,6 +416,10 @@ class CurriculumStageDataset(Dataset):
 
         chunk = torch.tensor(self.chunks[actual_idx], dtype=torch.long)
         return chunk[:-1], chunk[1:]  # (input, target)
+
+    def set_replay_fraction(self, fraction: float):
+        """Dynamically adjust the fraction of samples drawn from replay pool."""
+        self.replay_frac = max(0.0, min(1.0, float(fraction)))
 
 
 # ─── DataLoader factory (compatible with repo's interface) ────────────────────

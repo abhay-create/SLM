@@ -1,0 +1,9 @@
+torch>=2.0.0
+numpy>=1.24.0
+pyyaml>=6.0
+tqdm>=4.64.0
+tokenizers>=0.13.2
+typing-extensions>=4.4.0
+# Optional / recommended for experiments
+# sentencepiece>=0.1.99
+# accelerate>=0.20.3

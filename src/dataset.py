@@ -1,15 +1,19 @@
 """
-dataset.py — Per-stage datasets + val set builders.
+dataset.py — Per-stage datasets, tokenization utilities, and val set builders.
 
-5-stage curriculum:
-  stage0   : TinyStories          @ seq=256
-  stage0b  : BabyLM easy sources  @ seq=384  (CHILDES, children's books, subtitles)
-  stage0c  : BabyLM hard sources  @ seq=512  (simple wiki, QED, wikipedia)
-  stage1   : SimpleWiki (full)    @ seq=512
-  stage2   : FineWeb-Edu (≥3)     @ seq=512
+This module exposes the dataset iteration and caching primitives used by
+both curriculum training and expansion stages. Key capabilities:
+    - Text iterators for multiple corpora (TinyStories, BabyLM, SimpleWiki, ROC, etc.)
+    - Tokenization and chunking utilities (`tokenize_and_chunk`) that produce
+        fixed-size token windows used for language model training
+    - Streaming and cached train dataset construction with optional replay mixing
+        (see `_load_replay_chunks` and `StreamingStageDataset.build`)
+    - Val set building and caching (`build_val_set`) and a convenient
+        `load_all_val_sets` helper returning DataLoaders used during evaluation
 
-Cache keys use dataset_name + seq_len so each stage gets its own cache file.
-Val sets for ALL 5 stages are built once and logged throughout training.
+Cache keys use `dataset_name + seq_len` so each stage gets a dedicated cache
+file. Val sets are built/cached once and reused across stages to allow
+consistent cross-domain tracking.
 """
 
 import os

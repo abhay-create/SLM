@@ -1,30 +1,31 @@
 """
-train_curriculum.py — Training script with curriculum learning integration.
+train_curriculum.py — Curriculum-driven training loop and helpers.
 
-Builds on the repo's existing model, tokenizer, logger, and dataset infrastructure.
-Adds curriculum-aware data sampling with four modes:
-  - random:     No curriculum (baseline)
-  - length:     Sort by token length (ipynb's naive approach)
-  - perplexity: Sort by perplexity composite, linear schedule
-  - adaptive:   Perplexity-based with competence-aware pacing (recommended)
+This module implements the curriculum training loop used both for base-stage
+curriculum training and for expansion-stage fine-tuning. Key responsibilities:
+    - Build model and optimizer, set up mixed precision
+    - Construct curriculum datasets (`CurriculumStageDataset`) and optional replay
+        mixing (replay pool support)
+    - Manage an adaptive `CompetenceScheduler` that controls eligible-data fraction
+    - Provide evaluation helpers: `evaluate`, `evaluate_by_tier`
+    - Early-exit detectors: `PlateauDetector`, `SpikeDetector`
+    - LR scheduler utilities and differential-LR support for expansion training
+    - Checkpoint helpers (`save_checkpoint`, `load_checkpoint`) — `save_checkpoint`
+        now stores an optional `anchor_val` (TinyStories baseline) to detect forgetting
 
-Usage:
-  # Full adaptive curriculum (recommended)
-  python train_curriculum.py \\
-    --config configs/stage0_curriculum.yaml \\
-    --tokenizer tokenizers/tokenizer_corpus.json
+New/modified features (compared to earlier versions):
+    - Anchor baseline: compute and persist TinyStories (`s0`) validation loss at
+        the start of training; use it to compute `ts_forgetting` during training and
+        drive adaptive replay policies
+    - Replay pool sampling: `CurriculumStageDataset` supports loading cached
+        replay chunks and `set_replay_fraction()` to dynamically control how often
+        replay samples are drawn
+    - Extended logging: training logs include `replay_frac`, `ts_forgetting`, and
+        `grad_norm` columns written by `src.logger.TrainingLogger`
 
-  # Baseline comparison (no curriculum)
-  python train_curriculum.py \\
-    --config configs/stage0_curriculum.yaml \\
-    --tokenizer tokenizers/tokenizer_corpus.json \\
-    --curriculum_mode random
+Usage examples:
+    python train_curriculum.py --config configs/stage0_full.yaml --tokenizer tokenizers/tokenizer_corpus.json
 
-  # Resume from checkpoint
-  python train_curriculum.py \\
-    --config configs/stage0_curriculum.yaml \\
-    --tokenizer tokenizers/tokenizer_corpus.json \\
-    --resume
 """
 
 import os
@@ -177,7 +178,7 @@ def get_lr(step, warmup, max_lr, min_lr, total_steps):
 
 def save_checkpoint(
     path, model, optimizer, scheduler_state, step, tokens_seen,
-    val_loss, curriculum_state=None,
+    val_loss, curriculum_state=None, anchor_val=None, forgetting_ema=None,
 ):
     data = {
         "model_state": model.state_dict(),
@@ -190,6 +191,10 @@ def save_checkpoint(
     }
     if curriculum_state is not None:
         data["curriculum_state"] = curriculum_state
+    if anchor_val is not None:
+        data["anchor_val"] = float(anchor_val)
+    if forgetting_ema is not None:
+        data["forgetting_ema"] = float(forgetting_ema)
     torch.save(data, path)
     print(f"[train] Checkpoint saved → {path}  (val={val_loss:.4f})")
 
@@ -284,6 +289,11 @@ def train(args):
     curriculum_mode = args.curriculum_mode or cfg_dict.get("curriculum_mode", "adaptive")
     initial_fraction = float(cfg_dict.get("initial_fraction", 0.15))
     scores_path = cfg_dict.get("scores_path", "curriculum_scores.npy")
+    # Anti-forgetting / replay mapping parameters
+    forgetting_ema_alpha = float(cfg_dict.get("forgetting_ema_alpha", 0.3))
+    replay_cap = float(cfg_dict.get("replay_cap", 0.3))
+    replay_scale = float(cfg_dict.get("replay_scale", 2.0))
+    min_replay = float(cfg_dict.get("min_replay", 0.0))
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n{'='*70}")
@@ -345,6 +355,9 @@ def train(args):
         scores_path=scores_path,
         mode=curriculum_mode,
         initial_fraction=initial_fraction,
+        # Optionally include replay sources configured in YAML
+        replay_sources=cfg_dict.get("replay_sources", None),
+        initial_replay_fraction=float(cfg_dict.get("initial_replay_fraction", 0.0)),
     )
 
     # ── Curriculum scheduler (only for adaptive mode) ─────────────────────────
@@ -358,6 +371,17 @@ def train(args):
 
     # ── Validation loaders ────────────────────────────────────────────────────
     val_loaders = load_all_val_sets(tokenizer, cache_dir=args.cache_dir)
+
+    # ── Anchor baseline (for forgetting detection) ───────────────────────────
+    initial_anchor_val = None
+    if 's0' in val_loaders:
+        try:
+            initial_anchor_val = evaluate(model, val_loaders['s0'], device, vocab_size=vocab_size)
+            print(f"[train] Initial anchor (s0) val: {initial_anchor_val:.4f}")
+        except Exception as e:
+            print(f"[train] Failed to compute initial anchor val: {e}")
+    # EMA of forgetting signal (smoothed): initialized from checkpoint if present
+    forgetting_ema = None
 
     # ── Compute total steps ───────────────────────────────────────────────────
     tokens_per_step = batch_size * seq_len
@@ -385,6 +409,20 @@ def train(args):
             train_ds.set_eligible_fraction(scheduler.get_current_fraction())
             print(f"[train] Restored curriculum fraction: "
                   f"{scheduler.get_current_fraction()*100:.1f}%")
+        # Restore anchor baseline for forgetting detection if present
+        if "anchor_val" in ckpt:
+            try:
+                initial_anchor_val = float(ckpt.get("anchor_val"))
+                print(f"[train] Restored anchor baseline (s0): {initial_anchor_val:.4f}")
+            except Exception:
+                pass
+        # Restore forgetting EMA if persisted
+        if "forgetting_ema" in ckpt:
+            try:
+                forgetting_ema = float(ckpt.get("forgetting_ema"))
+                print(f"[train] Restored forgetting EMA: {forgetting_ema:.6f}")
+            except Exception:
+                pass
     elif args.prev_checkpoint and os.path.exists(args.prev_checkpoint):
         print(f"[train] Loading weights from: {args.prev_checkpoint}")
         ckpt = torch.load(args.prev_checkpoint, map_location="cpu", weights_only=False)
@@ -467,6 +505,10 @@ def train(args):
             if len(deep_layer_grads) > 100:
                 deep_layer_grads.pop(0)
 
+            # Global grad norm for monitoring
+            grads = [p.grad.norm().item() for p in model.parameters() if getattr(p, 'grad', None) is not None]
+            global_grad_norm = sum(grads) / max(len(grads), 1) if grads else float('nan')
+
             if use_bf16:
                 optimizer.step()
             else:
@@ -506,6 +548,10 @@ def train(args):
                 }
                 current_val = val_losses.get(val_key, val_losses.get("s0", 0))
 
+                # Anchor (TinyStories) loss and forgetting metric placeholder
+                ts_loss = val_losses.get('s0', None)
+                forgetting = float('nan')
+
                 # Assess deep layer stability
                 deep_stable = True
                 if len(deep_layer_grads) > 20:
@@ -523,6 +569,31 @@ def train(args):
 
                     info = scheduler.update_competence(current_val, deep_layers_stable=deep_stable)
                     train_ds.set_eligible_fraction(info["fraction"])
+
+                    # Adaptive replay fraction policy:
+                    # If forgetting observed on anchor domain (s0) increase replay
+                    if ts_loss is not None and initial_anchor_val is not None:
+                        # Raw relative forgetting: positive means worse than source
+                        raw_forgetting = (ts_loss - initial_anchor_val) / max(initial_anchor_val, 1e-6)
+
+                        # Update EMA of forgetting to smooth noisy small-val signals
+                        if forgetting_ema is None:
+                            forgetting_ema = float(raw_forgetting)
+                        else:
+                            forgetting_ema = (
+                                forgetting_ema_alpha * float(raw_forgetting)
+                                + (1.0 - forgetting_ema_alpha) * forgetting_ema
+                            )
+
+                        # Use the (non-negative) EMA to map to replay fraction
+                        use_forgetting = max(0.0, forgetting_ema)
+                        new_replay = min(replay_cap, max(min_replay, use_forgetting * replay_scale))
+                        train_ds.set_replay_fraction(new_replay)
+                        forgetting = float(raw_forgetting)
+                        print(
+                            f"[replay] Adjusted replay_frac → {train_ds.replay_frac:.3f} "
+                            f"(raw={raw_forgetting:.3f}, ema={forgetting_ema:.3f})"
+                        )
 
                     # Rebuild loader with new eligible count
                     curriculum_log.append({
@@ -562,6 +633,8 @@ def train(args):
                         curriculum_state=(
                             scheduler.state_dict() if scheduler else None
                         ),
+                        anchor_val=initial_anchor_val,
+                        forgetting_ema=forgetting_ema,
                     )
 
                 curr_metrics = {
@@ -569,7 +642,12 @@ def train(args):
                     "tier_medium": tier_results.get("medium", float('nan')),
                     "tier_hard": tier_results.get("hard", float('nan')),
                     "fraction": scheduler.get_current_fraction() if scheduler else float('nan'),
-                    "kv_div": kv_div
+                    "kv_div": kv_div,
+                    "replay_frac": getattr(train_ds, 'replay_frac', float('nan')),
+                    "anchor_reg": float('nan'),
+                    "ts_forgetting": forgetting,
+                    "ts_forgetting_ema": (forgetting_ema if forgetting_ema is not None else float('nan')),
+                    "grad_norm": global_grad_norm,
                 }
                 logger.log(step, tokens_seen, train_loss, val_losses, lr, curriculum=curr_metrics)
 

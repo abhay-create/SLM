@@ -1,32 +1,39 @@
 """
-train_expansion.py — Orchestrates multi-stage model expansion training.
+train_expansion.py — Orchestrates one expansion stage end-to-end.
 
-For each expansion stage:
-  1. Load previous checkpoint
-  2. Expand the model (depth / FFN width / context)
-  3. Validate expansion preserves function
-  4. Create fresh optimizer with differential learning rates
-  5. Train with curriculum learning
-  6. Save best checkpoint → input for next stage
+This script runs a single expansion stage defined in `configs/expansion_stages.yaml`.
+High-level flow implemented by this file:
+    1) Parse CLI args (stage, config, tokenizer, dirs)
+    2) Load stage config (`stage_<stage>` key) from YAML
+    3) Load tokenizer and source checkpoint (torch.load) and instantiate `SLM` with the
+         checkpoint `config` + `model_state`
+    4) Apply function-preserving expansions as requested by the config using
+         `expand_model.expand_depth`, `expand_model.expand_ffn_width`, and
+         `expand_model.expand_context_length` — each expansion is validated via
+         `expand_model.validate_expansion`
+    5) Build training components: differential-LR optimizer (`build_expansion_optimizer`),
+         mixed-precision (`GradScaler` / `autocast`), curriculum dataset (`CurriculumStageDataset`),
+         and optional `CompetenceScheduler` for adaptive curricula
+    6) Train with a curriculum-aware dataloader and dynamic context sizing
+         (uses `get_dynamic_block_size`, per-step LR updates via `update_lr_groups`),
+         perform periodic evaluation (`evaluate`) and per-tier analysis (`evaluate_by_tier`)
+    7) Checkpoint best models using `save_checkpoint` (from `train_curriculum`) —
+         checkpoints now optionally include an `anchor_val` (TinyStories baseline)
+         which is used to detect forgetting on earlier domains
+    8) After training completes, run capability logging (`src.capability_logger.run_capability_logging`)
+         to append cross-domain metrics and stylized samples to `docs/curriculum_capabilities.md`
 
-Usage:
-  # Run Stage A (6→9 layers)
-  python train_expansion.py \
-    --stage A \
-    --config configs/expansion_stages.yaml \
-    --tokenizer tokenizers/tokenizer_corpus.json
+Notes / interactions with other modules:
+- Curriculum and replay policies are implemented in `src.curriculum_dataset` and
+    `train_curriculum` (CompetenceScheduler). The expansion script delegates curriculum
+    training primitives (evaluation, tiered eval, LR schedules, detection utilities)
+    to `train_curriculum` helper functions.
+- Logging is handled by `src.logger.TrainingLogger` which writes a per-stage CSV with
+    extended columns (replay_frac, ts_forgetting, grad_norm, etc.).
 
-  # Run Stage B (9→12 layers + context expansion)
-  python train_expansion.py \
-    --stage B \
-    --config configs/expansion_stages.yaml \
-    --tokenizer tokenizers/tokenizer_corpus.json
+Usage examples (unchanged):
+    python train_expansion.py --stage 3 --tokenizer tokenizers/tokenizer_corpus.json
 
-  # Run Stage C (FFN widen + context expansion)
-  python train_expansion.py \
-    --stage C \
-    --config configs/expansion_stages.yaml \
-    --tokenizer tokenizers/tokenizer_corpus.json
 """
 
 import os
