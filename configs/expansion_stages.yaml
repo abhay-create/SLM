@@ -1,0 +1,215 @@
+# ─── Model Expansion Stage Configs ────────────────────────────────────────────
+# Each stage defines the target model architecture, training parameters,
+# and data configuration for that expansion phase.
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Stage 2: ROCStories + SimpleStories
+# Goal: Move from single-event stories to multi-step causal chains.
+# ────────────────────────────────────────────────────────────────────────────────
+stage_2:
+  # Model architecture
+  n_layers: 9
+  d_ff: 2048
+  ctx_len: 384
+
+  # Expansion config
+  clone_from: [3, 4, 5]       # 0-indexed source layers to clone
+  noise_std: 0.01             # Symmetry-breaking noise (mandatory)
+  new_ctx_len: 384
+  source_checkpoint: "checkpoints/stagefull_dataset_curriculum_adaptive_best.pt"
+
+  # Training config
+  dataset:
+    rocstories: 0.6
+    simplestories: 0.4
+  val_key: roc
+  seq_len: 384
+  max_tokens: 300_000_000     # 300M tokens
+  batch_size: 24
+  eval_interval: 1000
+  patience: 15
+  min_delta: 0.002
+  spike_threshold: 0.5
+  spike_window: 20
+
+  # LR schedule
+  learning_rate: 1.5e-4
+  lr_warmup_steps: 1000
+  lr_min: 1.5e-5
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  # Differential LR
+  pretrained_lr_mult: 0.5
+  new_lr_mult: 1.0
+
+  # Curriculum settings
+  curriculum_mode: random     # Using explicit dataset mixing
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Stage 3: SimpleStories + Children-Stories-Collection
+# Goal: Longer narratives, scene transitions, entity tracking.
+# ────────────────────────────────────────────────────────────────────────────────
+stage_3:
+  # Model architecture (No expansion here)
+  n_layers: 9
+  d_ff: 2048
+  ctx_len: 384
+
+  # Expansion config
+  source_checkpoint: "checkpoints/stage_2_best.pt"
+
+  # Training config
+  dataset:
+    simplestories: 0.4
+    children_stories: 0.4
+    rocstories: 0.1
+    tinystories: 0.1
+  val_key: child
+  seq_len: 384
+  max_tokens: 300_000_000
+  batch_size: 24
+  eval_interval: 1000
+  patience: 15
+  min_delta: 0.002
+  spike_threshold: 0.5
+  spike_window: 20
+
+  # LR schedule
+  learning_rate: 1.5e-4
+  lr_warmup_steps: 1000
+  lr_min: 1.5e-5
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  pretrained_lr_mult: 1.0     # All layers are stable now
+  new_lr_mult: 1.0
+
+  curriculum_mode: random
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Stage 4: Children-Stories + SimpleWiki
+# Goal: Expand vocabulary, paragraph structure, non-fiction style.
+# ────────────────────────────────────────────────────────────────────────────────
+stage_4:
+  # Model architecture
+  n_layers: 12
+  d_ff: 2048
+  ctx_len: 512
+
+  # Expansion config
+  clone_from: [6, 7, 8]
+  noise_std: 0.01
+  new_ctx_len: 512
+  source_checkpoint: "checkpoints/stage_3_best.pt"
+
+  # Training config
+  dataset:
+    children_stories: 0.6
+    simplewiki: 0.3
+    simplestories: 0.1
+  val_key: s1
+  seq_len: 512
+  max_tokens: 400_000_000
+  batch_size: 16
+  eval_interval: 1000
+  patience: 15
+  min_delta: 0.002
+  spike_threshold: 0.5
+  spike_window: 20
+
+  # LR schedule
+  learning_rate: 1.0e-4
+  lr_warmup_steps: 1000
+  lr_min: 1.0e-5
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  # Differential LR
+  pretrained_lr_mult: 0.5
+  new_lr_mult: 1.0
+
+  curriculum_mode: random
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Stage 5: WritingPrompts Easy
+# Goal: Learn prompt-conditioning, dialogue, longer plot setup.
+# ────────────────────────────────────────────────────────────────────────────────
+stage_5:
+  # Model architecture (No expansion)
+  n_layers: 12
+  d_ff: 2048
+  ctx_len: 512
+
+  source_checkpoint: "checkpoints/stage_4_best.pt"
+
+  # Training config
+  dataset:
+    writingprompts_easy: 0.8
+    children_stories: 0.1
+    simplewiki: 0.1
+  val_key: wp
+  seq_len: 512
+  max_tokens: 500_000_000
+  batch_size: 16
+  eval_interval: 1000
+  patience: 15
+  min_delta: 0.002
+  spike_threshold: 0.5
+  spike_window: 20
+
+  # LR schedule
+  learning_rate: 1.0e-4
+  lr_warmup_steps: 1000
+  lr_min: 1.0e-5
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  pretrained_lr_mult: 1.0
+  new_lr_mult: 1.0
+
+  curriculum_mode: random
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Stage 6: Full WritingPrompts
+# Goal: Adult fiction style, longer coherence, multi-scene reasoning.
+# ────────────────────────────────────────────────────────────────────────────────
+stage_6:
+  # Model architecture
+  n_layers: 12
+  d_ff: 3584
+  ctx_len: 768
+
+  # Expansion config
+  new_d_ff: 3584
+  new_ctx_len: 768
+  source_checkpoint: "checkpoints/stage_5_best.pt"
+
+  # Training config
+  dataset:
+    writingprompts: 0.7
+    tinystories: 0.1
+    children_stories: 0.1
+    simplewiki: 0.1
+  val_key: wp
+  seq_len: 768
+  max_tokens: 600_000_000
+  batch_size: 8
+  eval_interval: 1000
+  patience: 15
+  min_delta: 0.002
+  spike_threshold: 0.5
+  spike_window: 20
+
+  # LR schedule
+  learning_rate: 8.0e-5
+  lr_warmup_steps: 1500
+  lr_min: 8.0e-6
+  weight_decay: 0.1
+  grad_clip: 1.0
+
+  # Differential LR
+  pretrained_lr_mult: 0.5
+  new_lr_mult: 1.0
+
+  curriculum_mode: random

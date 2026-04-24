@@ -115,29 +115,65 @@ def _iter_fineweb(min_score: float = 3.0) -> Iterator[str]:
             yield ex["text"]
 
 
+def _iter_rocstories() -> Iterator[str]:
+    from datasets import load_dataset
+    ds = load_dataset(
+        "mintujupally/ROCStories",
+        split="train",
+    )
+    while True:
+        for ex in ds:
+            yield ex.get("text", ex.get("story", ""))
+
+
+def _iter_simplestories() -> Iterator[str]:
+    from datasets import load_dataset
+    ds = load_dataset(
+        "SimpleStories/SimpleStories",
+        split="train",
+    )
+    while True:
+        for ex in ds:
+            yield ex.get("story", ex.get("text", ""))
+
+
+def _iter_children_stories() -> Iterator[str]:
+    from datasets import load_dataset
+    ds = load_dataset(
+        "ajibawa-2023/Children-Stories-Collection",
+        split="train",
+    )
+    while True:
+        for ex in ds:
+            yield ex.get("text", ex.get("story", ""))
+
+
 # ─── Train iterator dispatcher ────────────────────────────────────────────────
 
-def get_train_iter(dataset_name: str) -> Iterator[str]:
+def get_train_iter(dataset_name) -> Iterator[str]:
     """
     Maps dataset_name (from yaml config) to its text iterator.
-    dataset_name values:
-      "tinystories"    stage0
-      "babylm_easy"   stage0b
-      "babylm_hard"   stage0c
-      "simplewiki"     stage1
-      "fineweb_edu"    stage2
-      "legal_documents" custom (LEDGAR contracts)
+    If dataset_name is a string, returns that iterator.
+    If dataset_name is a dict mapping names to weights, returns a mixed iterator.
     """
+    if isinstance(dataset_name, dict):
+        return get_mixed_train_iter(dataset_name)
+
     from src.legal_dataset import iter_legal_documents
+    from src.writingprompts_dataset import iter_writingprompts
     
     dispatch = {
-        "tinystories" : lambda: _iter_tinystories("train"),
-        "legal_documents": lambda: iter_legal_documents(),
-        "babylm_easy" : lambda: _iter_babylm(BABYLM_EASY),
-        "babylm_hard" : lambda: _iter_babylm(BABYLM_HARD),
-        "simplewiki"  : _iter_simplewiki,
-        "fineweb_edu" : _iter_fineweb,
-        "legal_documents" : lambda: iter_legal_documents(),
+        "tinystories"      : lambda: _iter_tinystories("train"),
+        "legal_documents"  : lambda: iter_legal_documents(),
+        "babylm_easy"      : lambda: _iter_babylm(BABYLM_EASY),
+        "babylm_hard"      : lambda: _iter_babylm(BABYLM_HARD),
+        "simplewiki"       : _iter_simplewiki,
+        "fineweb_edu"      : _iter_fineweb,
+        "writingprompts"   : lambda: iter_writingprompts("train"),
+        "writingprompts_easy": lambda: iter_writingprompts("train", max_length_filter=500),
+        "rocstories"       : _iter_rocstories,
+        "simplestories"    : _iter_simplestories,
+        "children_stories" : _iter_children_stories,
     }
     
     if dataset_name not in dispatch:
@@ -146,6 +182,31 @@ def get_train_iter(dataset_name: str) -> Iterator[str]:
             f"Valid options: {list(dispatch.keys())}"
         )
     return dispatch[dataset_name]()
+
+
+def get_mixed_train_iter(dataset_dict: dict) -> Iterator[str]:
+    """
+    Takes a dictionary of {dataset_name: weight} and yields texts
+    sampled according to the weights. Loops endlessly.
+    """
+    # Normalize weights
+    names = list(dataset_dict.keys())
+    weights = [dataset_dict[name] for name in names]
+    total_weight = sum(weights)
+    probs = [w / total_weight for w in weights]
+    
+    # Initialize iterators
+    iterators = {name: get_train_iter(name) for name in names}
+    
+    while True:
+        # Choose a dataset based on probabilities
+        chosen_name = random.choices(names, weights=probs, k=1)[0]
+        try:
+            yield next(iterators[chosen_name])
+        except StopIteration:
+            # If an iterator is exhausted, restart it
+            iterators[chosen_name] = get_train_iter(chosen_name)
+            yield next(iterators[chosen_name])
 
 
 # ─── Val iterator dispatcher ──────────────────────────────────────────────────
@@ -204,6 +265,35 @@ def get_val_iter(dataset_name: str, n_docs: int, seed: int = 42) -> Iterator[str
                 yield text
                 count += 1
                 if count >= n_docs: break
+
+    elif dataset_name == "writingprompts":
+        from src.writingprompts_dataset import iter_writingprompts
+        count = 0
+        for text in iter_writingprompts(split="validation"):
+            if count >= n_docs: break
+            yield text
+            count += 1
+            
+    elif dataset_name == "rocstories":
+        count = 0
+        for text in _iter_rocstories():
+            if count >= n_docs: break
+            yield text
+            count += 1
+            
+    elif dataset_name == "simplestories":
+        count = 0
+        for text in _iter_simplestories():
+            if count >= n_docs: break
+            yield text
+            count += 1
+            
+    elif dataset_name == "children_stories":
+        count = 0
+        for text in _iter_children_stories():
+            if count >= n_docs: break
+            yield text
+            count += 1
 
     else:
         raise ValueError(f"Unknown dataset_name for val: {dataset_name}")
@@ -477,10 +567,13 @@ def make_dataloader(dataset: Dataset, batch_size: int, shuffle: bool = True) -> 
 # }
 
 VAL_CONFIGS = {
-    "s0" : ("tinystories", 256, 5000),
-    "s1" : ("simplewiki",  512, 2000),
-    "s2" : ("fineweb_edu", 512, 1500),
-    "legal" : ("legal_documents", 512, 1500),
+    "s0"    : ("tinystories",     256, 5000),
+    "s1"    : ("simplewiki",      512, 2000),
+    "s2"    : ("fineweb_edu",     512, 1500),
+    "roc"   : ("rocstories",      384, 2000),
+    "simple": ("simplestories",   384, 2000),
+    "child" : ("children_stories",512, 2000),
+    "wp"    : ("writingprompts",  384, 2000),
 }
 
 def load_all_val_sets(
