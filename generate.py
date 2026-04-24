@@ -1,6 +1,6 @@
 import torch
 from tokenizers import Tokenizer
-from src.model import SLM, SLMConfig
+from model import *
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -8,7 +8,7 @@ print("[generate] Loading tokenizer...")
 tokenizer = Tokenizer.from_file("tokenizers/tokenizer_corpus.json")
 vocab_size = tokenizer.get_vocab_size()
 
-ckpt_path = "checkpoints/stage0_curriculum_adaptive_best.pt"
+ckpt_path = 'checkpoints/stage0_best_1stfull.pt'
 print(f"[generate] Loading checkpoint: {ckpt_path}")
 ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
 
@@ -18,15 +18,29 @@ model = SLM(cfg).to(device)
 model.load_state_dict(ckpt["model_state"])
 model.eval()
 
-def generate_text(prompt, max_new_tokens=150, temperature=0.7):
+print("Tokenizer vocab size:", tokenizer.get_vocab_size())
+for name, param in model.named_parameters():
+    print(name, param.shape)
+
+# 1. Dynamically retrieve your tokenizer's EOS ID (e.g., usually 2, 3, or 50256)
+# If your tokenizer uses a different special token string, replace "<|endoftext|>"
+eos_id = tokenizer.token_to_id("<|endoftext|>") 
+if eos_id is None:
+    eos_id = tokenizer.token_to_id("[EOS]") # Fallback for other standard formats
+
+def generate_text(prompt, max_new_tokens=250, temperature=0.7):
     tokens = tokenizer.encode(prompt).ids
     x = torch.tensor(tokens, dtype=torch.long, device=device).unsqueeze(0)
     
     with torch.no_grad():
-        out_tokens = model.generate(x, max_new=max_new_tokens, temperature=temperature, top_k=50)
+        out_tokens = model.generate(x, max_new=max_new_tokens, temperature=temperature, top_k=50)[0].tolist()
     
-    text = tokenizer.decode(out_tokens[0].tolist())
-    # Clean up any excessive newlines
+    # 2. Slice the token list exactly where the EOS token occurs
+    if eos_id in out_tokens:
+        out_tokens = out_tokens[:out_tokens.index(eos_id)]
+    
+    # 3. Decode the truncated list
+    text = tokenizer.decode(out_tokens)
     return text.replace('\n\n', ' ').strip()
 
 prompts = [

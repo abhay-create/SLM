@@ -115,8 +115,22 @@ class SpikeDetector:
 # ─── Dynamic Block Size & Divergence (Addendum features) ──────────────────────
 
 def get_dynamic_block_size(curriculum_fraction: float, max_block: int = 256) -> int:
-    """Soft token budget: forces learning local syntax before long-context."""
-    BUDGET_SCHEDULE = [64, 128, 192, 256]
+    """Soft token budget: forces learning local syntax before long-context.
+    
+    Schedule scales with max_block to support expansion stages:
+      - max_block <= 256: [64, 128, 192, 256]
+      - max_block <= 384: [64, 128, 192, 256, 384]
+      - max_block <= 512: [64, 128, 192, 256, 384, 512]
+      - max_block <= 768: [64, 128, 256, 384, 512, 768]
+    """
+    if max_block <= 256:
+        BUDGET_SCHEDULE = [64, 128, 192, 256]
+    elif max_block <= 384:
+        BUDGET_SCHEDULE = [64, 128, 192, 256, 384]
+    elif max_block <= 512:
+        BUDGET_SCHEDULE = [64, 128, 192, 256, 384, 512]
+    else:
+        BUDGET_SCHEDULE = [64, 128, 256, 384, 512, 768]
     idx = min(int(curriculum_fraction * len(BUDGET_SCHEDULE)), len(BUDGET_SCHEDULE) - 1)
     return min(BUDGET_SCHEDULE[idx], max_block)
 

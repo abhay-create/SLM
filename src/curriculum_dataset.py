@@ -203,7 +203,7 @@ class CurriculumStageDataset(Dataset):
 
     def build(
         self,
-        dataset_name: str,
+        dataset_name,
         tokenizer,
         seq_len: int,
         max_tokens: int,
@@ -211,6 +211,7 @@ class CurriculumStageDataset(Dataset):
         scores_path: str = "curriculum_scores.npy",
         mode: str = "adaptive",
         initial_fraction: float = 0.15,
+        stage_name: str = "",
     ) -> "CurriculumStageDataset":
         """
         Load or build the chunked dataset, then set up curriculum ordering.
@@ -218,7 +219,16 @@ class CurriculumStageDataset(Dataset):
         self.mode = mode
 
         # ── Load or build chunks (reuse existing cache logic) ─────────────────
-        cache_path = os.path.join(cache_dir, f"train_{dataset_name}_seq{seq_len}.pkl")
+        if isinstance(dataset_name, dict):
+            # Sort keys so name is deterministic
+            dict_str = "_".join(f"{k}{v}" for k, v in sorted(dataset_name.items()))
+            import hashlib
+            hash_str = hashlib.md5(dict_str.encode()).hexdigest()[:8]
+            safe_name = f"mixed_{stage_name}_{hash_str}" if stage_name else f"mixed_{hash_str}"
+        else:
+            safe_name = str(dataset_name)
+            
+        cache_path = os.path.join(cache_dir, f"train_{safe_name}_seq{seq_len}.pkl")
 
         if os.path.exists(cache_path):
             print(f"[curriculum] Loading cached chunks from {cache_path}")
@@ -227,7 +237,7 @@ class CurriculumStageDataset(Dataset):
             print(f"[curriculum] Loaded {len(self.chunks):,} chunks")
         else:
             from src.dataset import tokenize_and_chunk, get_train_iter
-            print(f"[curriculum] Building chunks for '{dataset_name}' "
+            print(f"[curriculum] Building chunks for '{safe_name}' "
                   f"(seq={seq_len}, max_tokens={max_tokens:,})...")
             text_iter = get_train_iter(dataset_name)
             self.chunks = tokenize_and_chunk(text_iter, tokenizer, seq_len, max_tokens)

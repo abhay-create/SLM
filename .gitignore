@@ -4,6 +4,8 @@ checkpoints/
 Logs/
 logs/
 inference_results/
+SLM/
+keep/
 
 # Python cache
 __pycache__/
@@ -14,6 +16,11 @@ cache/
 *.pt
 *.pth
 *.ckpt
+*.npy
+
+# Logs and Outputs
+*.log
+docs/*_output.txt
 
 # Misc
 .env
