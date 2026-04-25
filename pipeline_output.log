@@ -1,0 +1,47 @@
+nohup: ignoring input
+Starting SLM Expansion Pipeline...
+=================================================
+Running Stage 2
+=================================================
+
+======================================================================
+  EXPANSION TRAINING — Stage 2
+======================================================================
+  Device:     cuda
+  Source:     checkpoints/TinyStoriesWithCurriculum.pt
+  Target:     n_layers=9, d_ff=2048, ctx=384
+======================================================================
+
+[train] Tokenizer: tokenizers/tokenizer_corpus.json (vocab=40,000)
+[train] Loading source: checkpoints/TinyStoriesWithCurriculum.pt
+Traceback (most recent call last):
+  File "/home/user21/slm/train_expansion.py", line 913, in <module>
+    train_expansion(parse_args())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "/home/user21/slm/train_expansion.py", line 440, in train_expansion
+    model = SLM(old_cfg).to(device)
+  File "/home/user21/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1384, in to
+    return self._apply(convert)
+           ~~~~~~~~~~~^^^^^^^^^
+  File "/home/user21/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 934, in _apply
+    module._apply(fn)
+    ~~~~~~~~~~~~~^^^^
+  File "/home/user21/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 965, in _apply
+    param_applied = fn(param)
+  File "/home/user21/miniconda3/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1370, in convert
+    return t.to(
+           ~~~~^
+        device,
+        ^^^^^^^
+        dtype if t.is_floating_point() or t.is_complex() else None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        non_blocking,
+        ^^^^^^^^^^^^^
+    )
+    ^
+torch.AcceleratorError: CUDA error: out of memory
+Search for `cudaErrorMemoryAllocation' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+

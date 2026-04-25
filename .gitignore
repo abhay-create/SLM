@@ -19,7 +19,7 @@ cache/
 *.npy
 
 # Logs and Outputs
-*.log
+
 docs/*_output.txt
 
 # Misc
