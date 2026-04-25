@@ -126,6 +126,18 @@ python src/capability_logger.py --checkpoint checkpoints/stage_2_best.pt --stage
 - **Dataset Streaming**: For small/medium datasets, use a **local-loop iterator** (loading without `streaming=True`) to avoid network-fetch overhead and "Repo card not found" logging loops.
 - **Expansion Symmetry**: When cloning layers, **Gaussian noise is mandatory**. Without it, gradients remain identical across cloned layers, and the model gains no functional capacity.
 
+## LLM Context / Replay Buffer
+
+This branch includes a file-based LLM context system under `llm_context/`.
+
+Future LLMs should start at `LLM_CONTEXT.md`, read the required startup context, retrieve task-specific context cards with `scripts/context_replay.py`, and update the context files after durable findings, decisions, user instructions, or workflow changes. This is intended to reduce repeated codebase analysis and preserve important conversation-level findings across model handoffs.
+
+Quick retrieval example:
+
+```bash
+python scripts/context_replay.py retrieve "stage2 gpu oom pipeline"
+```
+
 ## Known Issues & Troubleshooting
 
 1) Stage mapping confusion
@@ -159,5 +171,4 @@ sed -n '1,240p' configs/expansion_stages.yaml
 ls -lah Logs/ | sed -n '1,200p'
 tail -n 120 Logs/train_stage3.log
 ```
-
 

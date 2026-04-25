@@ -1,0 +1,65 @@
+version: 1
+last_updated: 2026-04-25
+purpose: >
+  File-based replay buffer for LLM collaboration on the SLM project.
+  LLMs should retrieve relevant context cards before broad code analysis and
+  update the memory after meaningful findings or changes.
+
+mandatory_startup_files:
+  - llm_context/README.md
+  - llm_context/SYSTEM_PROMPT.md
+  - llm_context/CURRENT_STATE.md
+
+retrieval_command:
+  example: python scripts/context_replay.py retrieve "stage2 gpu oom pipeline"
+
+update_policy:
+  always_update_after:
+    - durable user instruction
+    - critical finding
+    - design decision
+    - code/config workflow change
+    - stale context discovered
+  minimum_files:
+    - llm_context/MEMORY_LOG.md
+    - llm_context/CURRENT_STATE.md
+    - llm_context/context_cards/
+
+card_types:
+  - overview
+  - workflow
+  - finding
+  - decision
+  - code-map
+  - prompt
+  - task
+
+priority_levels:
+  - critical
+  - high
+  - medium
+  - low
+
+context_cards:
+  - id: project-overview
+    path: llm_context/context_cards/project-overview.md
+    tags: [overview, architecture, curriculum, expansion]
+  - id: training-pipeline
+    path: llm_context/context_cards/training-pipeline.md
+    tags: [training, pipeline, stage, checkpoint, evaluation]
+  - id: stage-config-map
+    path: llm_context/context_cards/stage-config-map.md
+    tags: [config, stages, yaml, hyperparameters]
+  - id: oom-diagnosis-2026-04-25
+    path: llm_context/context_cards/oom-diagnosis-2026-04-25.md
+    tags: [gpu, oom, ssh, nvidia-smi, stage2, pipeline]
+  - id: llm-memory-contract
+    path: llm_context/context_cards/llm-memory-contract.md
+    tags: [llm, memory, context, replay, prompt]
+
+safeguards:
+  - Do not store secrets in llm_context.
+  - Verify source files before code changes.
+  - Do not re-scan the entire repo when a focused context card is enough.
+  - Broaden analysis when retrieved cards are stale or contradictory.
+  - Preserve user changes and avoid destructive git commands.
