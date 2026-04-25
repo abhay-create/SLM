@@ -1,8 +1,8 @@
 """
 expand_model.py — Model expansion utilities for SLM.
 
-Implements function-preserving model growth:
-  - Depthwise expansion (layer cloning with symmetry-breaking noise)
+Implements model growth utilities:
+  - Depthwise warm-start expansion (layer cloning with symmetry-breaking noise)
   - FFN widening (zero-padded w_down for exact function preservation)
   - Context length extension (learnable pos_emb interpolation)
   - Expansion validation (output similarity checks)
@@ -42,6 +42,16 @@ import torch.nn.functional as F
 from src.model import SLM, SLMConfig, DecoderBlock
 
 
+def _copy_non_layer_parameters(source: SLM, target: SLM):
+    """Copy embeddings, output norm, and untied LM head parameters."""
+    target.tok_emb.load_state_dict(source.tok_emb.state_dict())
+    if source.pos_emb is not None and target.pos_emb is not None:
+        target.pos_emb.load_state_dict(source.pos_emb.state_dict())
+    target.norm_out.load_state_dict(source.norm_out.state_dict())
+    if not source.cfg.weight_tying:
+        target.lm_head.load_state_dict(source.lm_head.state_dict())
+
+
 # ─── Depth Expansion ─────────────────────────────────────────────────────────
 
 def expand_depth(
@@ -55,6 +65,10 @@ def expand_depth(
     The cloned layers are deep-copied, then symmetry-breaking noise is added
     to all weight parameters. This ensures the cloned layers can learn
     different functions from their sources via gradient differentiation.
+
+    This is a warm-start expansion, not an exact function-preserving transform:
+    appending active Transformer blocks changes the model output. Use
+    `validate_expansion()` to measure the initial output drift.
 
     Args:
         model: Trained SLM model.
@@ -97,11 +111,7 @@ def expand_depth(
     new_model = SLM(new_cfg)
 
     # Copy all non-layer parameters from old model
-    new_model.tok_emb.load_state_dict(model.tok_emb.state_dict())
-    if model.pos_emb is not None:
-        new_model.pos_emb.load_state_dict(model.pos_emb.state_dict())
-    new_model.norm_out.load_state_dict(model.norm_out.state_dict())
-    # lm_head is tied to tok_emb if weight_tying is enabled
+    _copy_non_layer_parameters(model, new_model)
 
     # Copy original layers
     for i in range(old_cfg.n_layers):
@@ -141,11 +151,11 @@ def expand_ffn_width(model: SLM, new_d_ff: int) -> SLM:
     Widen the FFN (SwiGLU) in all layers with function-preserving initialization.
 
     For each SwiGLU layer:
-      - w_gate: (d_model, old_ff) → (d_model, new_ff) — new cols = small random
-      - w_up:   (d_model, old_ff) → (d_model, new_ff) — new cols = small random
-      - w_down: (old_ff, d_model) → (new_ff, d_model) — new rows = ZEROS
+      - w_gate: (old_ff, d_model) -> (new_ff, d_model); new rows = small random
+      - w_up:   (old_ff, d_model) -> (new_ff, d_model); new rows = small random
+      - w_down: (d_model, old_ff) -> (d_model, new_ff); new columns = ZEROS
 
-    The zero-initialized w_down rows ensure the expanded neurons are "dormant"
+    The zero-initialized w_down columns ensure the expanded neurons are "dormant"
     at init — they don't affect model output. This makes the expansion exactly
     function-preserving: f(x; θ_expanded) = f(x; θ_original) for all x.
 
@@ -179,10 +189,7 @@ def expand_ffn_width(model: SLM, new_d_ff: int) -> SLM:
     new_model = SLM(new_cfg)
 
     # Copy non-layer parameters
-    new_model.tok_emb.load_state_dict(model.tok_emb.state_dict())
-    if model.pos_emb is not None:
-        new_model.pos_emb.load_state_dict(model.pos_emb.state_dict())
-    new_model.norm_out.load_state_dict(model.norm_out.state_dict())
+    _copy_non_layer_parameters(model, new_model)
 
     d_model = old_cfg.d_model
     init_std = 0.02 / math.sqrt(2 * old_cfg.n_layers)
@@ -197,28 +204,36 @@ def expand_ffn_width(model: SLM, new_d_ff: int) -> SLM:
         new_layer.attn.load_state_dict(old_layer.attn.state_dict())
         new_layer.norm2.load_state_dict(old_layer.norm2.state_dict())
 
-        # Expand w_gate: (d_model, old_ff) → (d_model, new_ff)
+        # Expand w_gate: (old_ff, d_model) -> (new_ff, d_model)
         old_gate = old_layer.ffn.w_gate.weight.data  # (old_ff, d_model)
         new_gate = new_layer.ffn.w_gate.weight.data   # (new_ff, d_model)
         new_gate[:old_d_ff, :] = old_gate
         nn.init.normal_(new_gate[old_d_ff:, :], 0.0, init_std)
+        if old_layer.ffn.w_gate.bias is not None:
+            new_layer.ffn.w_gate.bias.data[:old_d_ff] = old_layer.ffn.w_gate.bias.data
+            new_layer.ffn.w_gate.bias.data[old_d_ff:] = 0.0
 
-        # Expand w_up: (d_model, old_ff) → (d_model, new_ff)
+        # Expand w_up: (old_ff, d_model) -> (new_ff, d_model)
         old_up = old_layer.ffn.w_up.weight.data
         new_up = new_layer.ffn.w_up.weight.data
         new_up[:old_d_ff, :] = old_up
         nn.init.normal_(new_up[old_d_ff:, :], 0.0, init_std)
+        if old_layer.ffn.w_up.bias is not None:
+            new_layer.ffn.w_up.bias.data[:old_d_ff] = old_layer.ffn.w_up.bias.data
+            new_layer.ffn.w_up.bias.data[old_d_ff:] = 0.0
 
-        # Expand w_down: (old_ff, d_model) → (new_ff, d_model)
-        # New rows = ZEROS (function-preserving: dormant neurons)
+        # Expand w_down: (d_model, old_ff) -> (d_model, new_ff)
+        # New columns = ZEROS (function-preserving: dormant neurons)
         old_down = old_layer.ffn.w_down.weight.data  # (d_model, old_ff)
         new_down = new_layer.ffn.w_down.weight.data   # (d_model, new_ff)
         new_down[:, :old_d_ff] = old_down
         new_down[:, old_d_ff:] = 0.0  # Dormant neurons
+        if old_layer.ffn.w_down.bias is not None:
+            new_layer.ffn.w_down.bias.data.copy_(old_layer.ffn.w_down.bias.data)
 
     print(f"[expand] FFN widening: d_ff {old_d_ff} → {new_d_ff}")
     print(f"[expand] New neurons per layer: {new_d_ff - old_d_ff} "
-          f"(w_down rows initialized to ZERO)")
+          f"(w_down columns initialized to ZERO)")
     print(f"[expand] Parameters: {model.num_params()/1e6:.1f}M → "
           f"{new_model.num_params()/1e6:.1f}M")
 
@@ -272,8 +287,7 @@ def expand_context_length(model: SLM, new_ctx_len: int) -> SLM:
     # Layers are identical — copy state dicts
     for i in range(old_cfg.n_layers):
         new_model.layers[i].load_state_dict(model.layers[i].state_dict())
-    new_model.tok_emb.load_state_dict(model.tok_emb.state_dict())
-    new_model.norm_out.load_state_dict(model.norm_out.state_dict())
+    _copy_non_layer_parameters(model, new_model)
 
     # Handle positional embeddings
     if model.pos_emb is not None and old_cfg.pos_type == "learnable":

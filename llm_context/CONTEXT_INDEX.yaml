@@ -56,6 +56,12 @@ context_cards:
   - id: llm-memory-contract
     path: llm_context/context_cards/llm-memory-contract.md
     tags: [llm, memory, context, replay, prompt]
+  - id: logging-benchmarking-contract
+    path: llm_context/context_cards/logging-benchmarking-contract.md
+    tags: [logging, benchmarking, metrics, training, pipeline, publication]
+  - id: correctness-audit-2026-04-25
+    path: llm_context/context_cards/correctness-audit-2026-04-25.md
+    tags: [correctness, audit, generation, expansion, replay, context]
 
 safeguards:
   - Do not store secrets in llm_context.

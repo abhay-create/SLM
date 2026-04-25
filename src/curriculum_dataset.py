@@ -27,6 +27,7 @@ Usage:
 """
 
 import os
+import glob
 import random
 import pickle
 from typing import Optional
@@ -211,6 +212,61 @@ class CurriculumStageDataset(Dataset):
         self.mode = "random"
         self.anchor_frac = anchor_frac
         self.anchor_count = 1
+        self.replay_chunks = []
+        self.replay_frac = 0.0
+
+    @staticmethod
+    def _extract_seq_len(path: str) -> int:
+        try:
+            return int(path.split("seq")[-1].split(".pkl")[0])
+        except (ValueError, IndexError):
+            return 0
+
+    def _replay_candidates(self, src: str, cache_dir: str, seq_len: int) -> list[str]:
+        if os.path.isabs(src) or src.endswith(".pkl"):
+            return [src if os.path.isabs(src) else os.path.join(cache_dir, src)]
+
+        exact = os.path.join(cache_dir, f"train_{src}_seq{seq_len}.pkl")
+        matches = glob.glob(os.path.join(cache_dir, f"train_{src}_seq*.pkl"))
+        candidates = sorted(set([exact] + matches), key=self._extract_seq_len, reverse=True)
+        return candidates
+
+    def _load_replay_source(self, src: str, cache_dir: str, seq_len: int) -> list:
+        for cand in self._replay_candidates(src, cache_dir, seq_len):
+            if not os.path.exists(cand):
+                continue
+            try:
+                with open(cand, "rb") as f:
+                    raw_chunks = pickle.load(f)
+            except Exception as e:
+                print(f"[curriculum] Failed to load replay source {cand}: {e}")
+                continue
+
+            adjusted_chunks = []
+            n_truncated = 0
+            n_skipped = 0
+            target_len = seq_len + 1
+            for chunk in raw_chunks:
+                if len(chunk) > target_len:
+                    adjusted_chunks.append(chunk[:target_len])
+                    n_truncated += 1
+                elif len(chunk) == target_len:
+                    adjusted_chunks.append(chunk)
+                else:
+                    n_skipped += 1
+
+            print(
+                f"[curriculum] Loaded replay pool from {cand} "
+                f"({len(adjusted_chunks):,}/{len(raw_chunks):,} usable chunks)"
+            )
+            if n_truncated:
+                print(f"[curriculum]   truncated {n_truncated:,} chunks to seq={seq_len}")
+            if n_skipped:
+                print(f"[curriculum]   skipped {n_skipped:,} chunks shorter than seq={seq_len}")
+            return adjusted_chunks
+
+        print(f"[curriculum] Replay source not found or unusable: {src}")
+        return []
 
     def build(
         self,
@@ -311,25 +367,19 @@ class CurriculumStageDataset(Dataset):
 
         # -- Replay pool support -------------------------------------------------
         self.replay_chunks = []
-        self.replay_frac = float(initial_replay_fraction)
+        requested_replay_frac = float(initial_replay_fraction)
+        self.replay_frac = 0.0
         if replay_sources:
             for src in replay_sources:
-                # Allow either a dataset name (train_<name>_seq{seq_len}.pkl) or a direct .pkl path
-                if os.path.isabs(src) or src.endswith('.pkl'):
-                    cand = src if os.path.isabs(src) else os.path.join(cache_dir, src)
-                else:
-                    cand = os.path.join(cache_dir, f"train_{src}_seq{seq_len}.pkl")
+                self.replay_chunks.extend(
+                    self._load_replay_source(str(src), cache_dir, seq_len)
+                )
 
-                if os.path.exists(cand):
-                    try:
-                        with open(cand, 'rb') as f:
-                            other_chunks = pickle.load(f)
-                        self.replay_chunks.extend(other_chunks)
-                        print(f"[curriculum] Loaded replay pool from {cand} ({len(other_chunks):,} chunks)")
-                    except Exception as e:
-                        print(f"[curriculum] Failed to load replay source {cand}: {e}")
-                else:
-                    print(f"[curriculum] Replay source not found: {cand}")
+            if self.replay_chunks:
+                self.set_replay_fraction(requested_replay_frac)
+            else:
+                self.replay_frac = 0.0
+                print("[curriculum] Replay disabled: no usable replay chunks loaded")
 
             print(f"[curriculum] Replay pool size: {len(self.replay_chunks):,}  initial_frac={self.replay_frac:.3f}")
 
@@ -419,6 +469,9 @@ class CurriculumStageDataset(Dataset):
 
     def set_replay_fraction(self, fraction: float):
         """Dynamically adjust the fraction of samples drawn from replay pool."""
+        if not self.replay_chunks:
+            self.replay_frac = 0.0
+            return
         self.replay_frac = max(0.0, min(1.0, float(fraction)))
 
 

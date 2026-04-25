@@ -431,7 +431,23 @@ def train(args):
     # ── Exit detectors ────────────────────────────────────────────────────────
     plateau = PlateauDetector(patience=patience, min_delta=min_delta)
     spike = SpikeDetector(window=spike_window, threshold=spike_thresh)
-    logger = TrainingLogger(stage=stage, log_dir=args.log_dir)
+    logger = TrainingLogger(
+        stage=stage,
+        log_dir=args.log_dir,
+        run_config={
+            "entrypoint": "train_curriculum.py",
+            "config": args.config,
+            "stage": stage,
+            "dataset": dataset_name,
+            "val_key": val_key,
+            "seq_len": seq_len,
+            "batch_size": batch_size,
+            "max_tokens": max_tokens,
+            "eval_interval": eval_interval,
+            "curriculum_mode": curriculum_mode,
+            "replay_sources": cfg_dict.get("replay_sources", None),
+        },
+    )
 
     # ── Training loop ─────────────────────────────────────────────────────────
     model.train()
@@ -547,6 +563,7 @@ def train(args):
                     for k, loader in val_loaders.items()
                 }
                 current_val = val_losses.get(val_key, val_losses.get("s0", 0))
+                curriculum_status = ""
 
                 # Anchor (TinyStories) loss and forgetting metric placeholder
                 ts_loss = val_losses.get('s0', None)
@@ -568,6 +585,7 @@ def train(args):
                         scheduler.add_patience(2)
 
                     info = scheduler.update_competence(current_val, deep_layers_stable=deep_stable)
+                    curriculum_status = info["status"]
                     train_ds.set_eligible_fraction(info["fraction"])
 
                     # Adaptive replay fraction policy:
@@ -642,12 +660,20 @@ def train(args):
                     "tier_medium": tier_results.get("medium", float('nan')),
                     "tier_hard": tier_results.get("hard", float('nan')),
                     "fraction": scheduler.get_current_fraction() if scheduler else float('nan'),
+                    "status": curriculum_status,
                     "kv_div": kv_div,
+                    "val_key": val_key,
+                    "current_val": current_val,
+                    "best_val": best_val,
                     "replay_frac": getattr(train_ds, 'replay_frac', float('nan')),
                     "anchor_reg": float('nan'),
                     "ts_forgetting": forgetting,
                     "ts_forgetting_ema": (forgetting_ema if forgetting_ema is not None else float('nan')),
                     "grad_norm": global_grad_norm,
+                    "deep_grad_norm": (
+                        sum(deep_layer_grads) / len(deep_layer_grads)
+                        if deep_layer_grads else float('nan')
+                    ),
                 }
                 logger.log(step, tokens_seen, train_loss, val_losses, lr, curriculum=curr_metrics)
 

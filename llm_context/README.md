@@ -76,7 +76,7 @@ List available context cards:
 python scripts/context_replay.py list
 ```
 
-Validate card metadata:
+Validate card metadata and `CONTEXT_INDEX.yaml` consistency:
 
 ```bash
 python scripts/context_replay.py check

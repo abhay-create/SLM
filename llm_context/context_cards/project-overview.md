@@ -6,7 +6,7 @@ status: active
 priority: high
 tags: [overview, architecture, curriculum, expansion, slm]
 updated: 2026-04-25
-summary: The repo trains a small decoder-only language model through staged curriculum learning and function-preserving expansion.
+summary: The repo trains a small decoder-only language model through staged curriculum learning and a mix of exact and warm-start expansion operators.
 ---
 
 # Project Overview
@@ -24,9 +24,9 @@ Core model design:
 
 Expansion strategy:
 
-- depth expansion clones selected layers and adds Gaussian noise
-- FFN width expansion zero-pads `w_down` so new neurons start dormant
-- context expansion interpolates learned positional embeddings
+- depth expansion clones selected layers and adds Gaussian noise; this is a warm-start operator, not exact function preservation
+- FFN width expansion zero-pads `w_down` so new neurons start dormant and the transform is exact for supported configs
+- context expansion interpolates learned positional embeddings and is approximate
 
 When to read:
 

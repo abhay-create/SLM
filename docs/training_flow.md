@@ -27,7 +27,7 @@ Detailed step-by-step flow
    - Files: [train_expansion.py](train_expansion.py), [src/model.py](src/model.py)
 
 4. Model expansion (if configured)
-   - Depth expansion: `expand_model.expand_depth()` clones layers and adds symmetry-breaking noise.
+   - Depth expansion: `expand_model.expand_depth()` clones layers and adds symmetry-breaking noise. This is a warm-start expansion, not exact function preservation.
    - FFN widening: `expand_model.expand_ffn_width()` widens FFN with function-preserving init.
    - Context extension: `expand_model.expand_context_length()` interpolates positional embeddings.
    - Each expansion is validated via `expand_model.validate_expansion()`.
@@ -62,7 +62,7 @@ Detailed step-by-step flow
      - Update `CompetenceScheduler.update_competence()` and call `train_ds.set_eligible_fraction()` to expand difficulty.
      - Adaptive replay policy: compute TinyStories forgetting vs `anchor_val` and adjust `train_ds.set_replay_fraction()` (if replay pool available).
      - Save best checkpoint via `save_checkpoint()` (now includes optional `anchor_val`).
-     - Log metrics via `TrainingLogger.log()` (writes CSV with extended columns: `replay_frac`, `ts_forgetting`, `grad_norm`, ...).
+     - Log metrics via `TrainingLogger.log()` (writes CSV plus a `.meta.json` sidecar with all-domain validation, replay/forgetting, stability, throughput, and GPU-memory columns).
    - Files: [train_expansion.py](train_expansion.py), [train_curriculum.py](train_curriculum.py), [src/logger.py](src/logger.py), [src/curriculum_dataset.py](src/curriculum_dataset.py)
 
 8. Exit and capability logging
@@ -73,17 +73,17 @@ Detailed step-by-step flow
 Supporting utilities called during flow
 -------------------------------------
 - `src/model.py`: SLM model, forward, generation, `.num_params()` — fundamental network computations.
-- `expand_model.py`: expansion helpers and checkpoint creation for function-preserving growth.
+- `expand_model.py`: expansion helpers and checkpoint creation. FFN widening is exact; noisy depth cloning is warm-started.
 - `src/dataset.py`: tokenization, chunking, val-set builders, replay chunk loaders.
 - `src/curriculum_dataset.py`: curriculum ordering, CompetenceScheduler, CurriculumStageDataset sampling logic (anchor injection & replay sampling).
-- `src/logger.py`: CSV and console logging. Files written to `logs/`.
+- `src/logger.py`: CSV, metadata sidecar, and console logging. Files written to `logs/`.
 - `train_curriculum.py`: evaluation helpers, LR schedule, early-exit detectors, checkpoint helpers.
 - `src/capability_logger.py`: end-of-stage capability reports and stylized generation probes.
 
 Notes on replay & forgetting
 ---------------------------
-- Replay pool sources should be provided as cached `train_<name>_seq{seq}.pkl` files (see `cache/`).
-- The adaptive policy increases a controlled `replay_frac` (bounded by default to 0.3) when TinyStories forgetting is observed, then decays when the anchor recovers.
+- Replay pool sources should be provided as cached `train_<name>_seq{seq}.pkl` files (see `cache/`). The curriculum replay loader can truncate longer cached chunks to the target sequence length, but it skips shorter chunks so batch collation and loss masking remain valid.
+- The adaptive policy increases a controlled `replay_frac` when TinyStories forgetting is observed and a usable replay pool is loaded. Bounds are configured per stage.
 - Checkpoints include `anchor_val` where available to provide consistent baselines across resumed runs.
 
 Files modified to reflect this flow
@@ -91,11 +91,12 @@ Files modified to reflect this flow
 - `train_expansion.py` — orchestrator and expansion training loop
 - `train_curriculum.py` — evaluation helpers, anchor/replay policies, checkpoint anchor storage
 - `src/curriculum_dataset.py` — replay pool loading and `set_replay_fraction()` API
-- `src/logger.py` — added columns and host/pid filename behaviour
+- `src/logger.py` — stable all-stage metric schema, metadata sidecars, and host/pid filename behaviour
+- `scripts/summarize_benchmarks.py` - aggregate CSV logs into `docs/benchmark_summary.md`
 - `src/capability_logger.py` — forgetting report vs `anchor_val`
 
 If you want, I can now:
 - Add line-numbered references for key call sites inside each file, or
-- Implement EMA smoothing for the forgetting signal before mapping to `replay_frac`, or
+- Add a no-training smoke fixture for replay/logging behavior, or
 - Add a small plotting utility to visualize `ts_forgetting`, `replay_frac`, and `grad_norm` from the CSV logs.
 

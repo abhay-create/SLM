@@ -7,7 +7,7 @@ Use this file to avoid re-reading the entire repo. Verify exact source before ed
 - `run_pipeline.sh`: runs expansion stages 2 through 6 sequentially.
 - `train_expansion.py`: main orchestrator for staged expansion training.
 - `train_curriculum.py`: curriculum training utilities, evaluation helpers, checkpoint helpers, LR schedule, early exit detectors.
-- `expand_model.py`: function-preserving expansion utilities for depth, FFN width, and context length.
+- `expand_model.py`: model growth utilities; FFN widening is exact, depth cloning is warm-started, and learned-position context interpolation is approximate.
 
 ## Core Modules
 
@@ -30,9 +30,11 @@ Use this file to avoid re-reading the entire repo. Verify exact source before ed
 - `system_info.txt` and `system_report.txt`: machine and hardware notes captured from the training environment.
 - `docs/training_flow.md`: detailed training flow and call chain.
 - `docs/benchmarking.md`: evaluation and monitoring recommendations.
+- `docs/logging_and_benchmarking.md`: exact logging schema, artifacts, and publication checklist.
+- `scripts/summarize_benchmarks.py`: aggregates `logs/stage*.csv` files into `docs/benchmark_summary.md` and optional JSON.
 
 ## LLM Context System
 
 - `LLM_CONTEXT.md`: root entry point.
 - `llm_context/`: shared replay-buffer memory.
-- `scripts/context_replay.py`: helper for retrieving context cards, validating cards, creating cards, and appending memory log entries.
+- `scripts/context_replay.py`: helper for retrieving context cards, validating card/index consistency, creating indexed cards, and appending memory log entries.

@@ -5,7 +5,7 @@
 This report documents the depth-first expansion of a 50M-parameter decoder-only Transformer to a 99.4M-parameter model across three stages. The expansion infrastructure worked correctly — layer cloning, FFN widening, and context extension all performed as designed. However, **the model suffered significant catastrophic forgetting** on TinyStories during Stages B and C, and the WritingPrompts training plateaued early with only ~28M tokens consumed per stage out of budgets of 200–300M.
 
 > [!IMPORTANT]
-> The expansion demonstrated that function-preserving growth operators work, but the training budget and anti-forgetting mechanisms were insufficient for the model to fully realize the benefits of the larger architecture.
+> The expansion demonstrated that the growth operators execute end-to-end, but only FFN widening is exact function preservation; noisy depth cloning is a warm-start operator. The training budget and anti-forgetting mechanisms were insufficient for the model to fully realize the benefits of the larger architecture.
 
 ---
 

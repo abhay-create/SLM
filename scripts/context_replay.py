@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTEXT_DIR = ROOT / "llm_context"
 CARDS_DIR = CONTEXT_DIR / "context_cards"
 MEMORY_LOG = CONTEXT_DIR / "MEMORY_LOG.md"
+CONTEXT_INDEX = CONTEXT_DIR / "CONTEXT_INDEX.yaml"
 
 REQUIRED_KEYS = {
     "id",
@@ -86,6 +87,49 @@ def iter_cards() -> list[dict]:
     if not CARDS_DIR.exists():
         return []
     return [parse_card(path) for path in sorted(CARDS_DIR.glob("*.md"))]
+
+
+def parse_index_cards() -> list[dict[str, str]]:
+    if not CONTEXT_INDEX.exists():
+        return []
+
+    entries: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in CONTEXT_INDEX.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- id:"):
+            if current:
+                entries.append(current)
+            current = {"id": stripped.split(":", 1)[1].strip()}
+        elif current is not None and stripped.startswith("path:"):
+            current["path"] = stripped.split(":", 1)[1].strip()
+        elif current is not None and stripped.startswith("tags:"):
+            current["tags"] = stripped.split(":", 1)[1].strip()
+    if current:
+        entries.append(current)
+    return entries
+
+
+def index_has_card(card_id: str) -> bool:
+    return any(entry.get("id") == card_id for entry in parse_index_cards())
+
+
+def append_index_entry(card_id: str, rel_path: str, tags: list[str]) -> None:
+    if not CONTEXT_INDEX.exists() or index_has_card(card_id):
+        return
+
+    text = CONTEXT_INDEX.read_text(encoding="utf-8")
+    entry = (
+        f"  - id: {card_id}\n"
+        f"    path: {rel_path}\n"
+        f"    tags: [{', '.join(tags)}]\n"
+    )
+    marker = "\nsafeguards:"
+    if marker in text:
+        text = text.replace(marker, "\n" + entry + marker, 1)
+    else:
+        text = text.rstrip() + "\n" + entry
+    CONTEXT_INDEX.write_text(text, encoding="utf-8")
 
 
 def score_card(card: dict, query_terms: set[str]) -> int:
@@ -160,7 +204,9 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 def cmd_check(args: argparse.Namespace) -> int:
     ok = True
-    for card in iter_cards():
+    cards = iter_cards()
+    cards_by_id = {}
+    for card in cards:
         missing = REQUIRED_KEYS - set(card.keys())
         path = Path(card["_path"]).relative_to(ROOT)
         if missing:
@@ -168,6 +214,45 @@ def cmd_check(args: argparse.Namespace) -> int:
             print(f"FAIL {path}: missing {', '.join(sorted(missing))}")
         else:
             print(f"OK   {path}")
+        card_id = str(card.get("id", ""))
+        if card_id:
+            if card_id in cards_by_id:
+                ok = False
+                print(f"FAIL {path}: duplicate card id '{card_id}'")
+            cards_by_id[card_id] = card
+
+    if not CONTEXT_INDEX.exists():
+        print(f"FAIL {CONTEXT_INDEX.relative_to(ROOT)}: missing context index")
+        return 1
+
+    indexed_ids = set()
+    for entry in parse_index_cards():
+        card_id = entry.get("id", "")
+        rel_path = entry.get("path", "")
+        indexed_ids.add(card_id)
+        if not card_id or not rel_path:
+            ok = False
+            print("FAIL llm_context/CONTEXT_INDEX.yaml: context card entry missing id or path")
+            continue
+        path = ROOT / rel_path
+        if not path.exists():
+            ok = False
+            print(f"FAIL llm_context/CONTEXT_INDEX.yaml: indexed path missing: {rel_path}")
+            continue
+        card = parse_card(path)
+        if str(card.get("id", "")) != card_id:
+            ok = False
+            print(
+                f"FAIL llm_context/CONTEXT_INDEX.yaml: id '{card_id}' does not "
+                f"match card id '{card.get('id')}' in {rel_path}"
+            )
+
+    for card_id, card in sorted(cards_by_id.items()):
+        if card_id not in indexed_ids:
+            ok = False
+            path = Path(card["_path"]).relative_to(ROOT)
+            print(f"FAIL llm_context/CONTEXT_INDEX.yaml: unindexed card {card_id} at {path}")
+
     return 0 if ok else 1
 
 
@@ -216,6 +301,11 @@ Read this card when working on: {", ".join(args.tags)}.
 - Add relevant files or commands here.
 """
     path.write_text(body, encoding="utf-8")
+    append_index_entry(
+        card_id,
+        str(path.relative_to(ROOT)).replace("\\", "/"),
+        args.tags,
+    )
     print(f"Created {path.relative_to(ROOT)}")
     return 0
 

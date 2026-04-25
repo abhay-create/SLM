@@ -7,3 +7,17 @@ Append durable session notes here. Keep entries short and factual.
 - User reported `pipeline_output.log` OOM during Stage 2. Analysis found the crash occurs while moving the source model to CUDA, before training settings such as `batch_size`, `seq_len`, optimizer state, or dataset loading matter.
 - User clarified the training machine is accessed over SSH and has multiple users. Important operational finding: unless GPU isolation is configured, Linux users share the same physical GPU memory pool shown by `nvidia-smi`.
 - Added the initial `llm_context/` replay-buffer prototype with system prompt, current state, index, memory log, decisions, findings, tasks, code map, tagged cards, templates, and retrieval/update helper script.
+
+## 2026-04-25
+
+- Actor: Codex
+- Event: Tested the LLM context protocol against a logging/benchmarking task. Context retrieval was sufficient to identify the right files, but lacked a durable logging contract.
+- Evidence: Added `llm_context/context_cards/logging-benchmarking-contract.md`, `docs/logging_and_benchmarking.md`, expanded `src/logger.py`, patched `train_curriculum.py` and `train_expansion.py`, and added `scripts/summarize_benchmarks.py`.
+- Follow-up: After real training runs, run `python scripts/summarize_benchmarks.py` and include `docs/benchmark_summary.md` in result review.
+
+## 2026-04-25
+
+- Actor: Codex
+- Event: Ran a correctness/claims audit across the context mechanism and training pipeline implementation.
+- Evidence: Patched `src/model.py`, `expand_model.py`, `src/curriculum_dataset.py`, `scripts/context_replay.py`, docs, and context cards. Added `llm_context/context_cards/correctness-audit-2026-04-25.md`.
+- Follow-up: Run full model behavioral checks on an environment with `torch` installed before publishing model-level generation or expansion-preservation claims.

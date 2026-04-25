@@ -110,10 +110,14 @@ class CausalSelfAttention(nn.Module):
                 v = torch.cat([kv_cache[1], v], dim=2)
             new_cache = (k, v)
 
+        # During cached prompt prefill, T can be > 1 and there is no past cache
+        # yet, so the prompt must still be causally masked. For later one-token
+        # decode steps, the key/value cache only contains past and current tokens.
+        causal = (not use_cache) or (use_cache and kv_cache is None and T > 1)
         out = F.scaled_dot_product_attention(
             q, k, v,
             dropout_p=self.attn_drop if self.training else 0.0,
-            is_causal=not use_cache,
+            is_causal=causal,
         )
         return self.out_proj(out.transpose(1, 2).contiguous().view(B, T, C)), new_cache
 
@@ -174,6 +178,9 @@ class SLM(nn.Module):
 
     @torch.no_grad()
     def generate(self, idx, max_new=100, temperature=1.0, top_k=None, use_cache=True):
+        if use_cache and idx.shape[1] + max_new > self.cfg.ctx_len:
+            use_cache = False
+
         kv_caches = [None] * self.cfg.n_layers
 
         if use_cache:

@@ -7,7 +7,7 @@ High-level flow implemented by this file:
     2) Load stage config (`stage_<stage>` key) from YAML
     3) Load tokenizer and source checkpoint (torch.load) and instantiate `SLM` with the
          checkpoint `config` + `model_state`
-    4) Apply function-preserving expansions as requested by the config using
+    4) Apply configured model-growth operators using
          `expand_model.expand_depth`, `expand_model.expand_ffn_width`, and
          `expand_model.expand_context_length` — each expansion is validated via
          `expand_model.validate_expansion`
@@ -587,6 +587,20 @@ def train_expansion(args):
     logger = TrainingLogger(
         stage=f"expansion_{args.stage}",
         log_dir=args.log_dir,
+        run_config={
+            "entrypoint": "train_expansion.py",
+            "stage": str(args.stage),
+            "stage_key": stage_key,
+            "source_checkpoint": source_path,
+            "dataset": dataset_name,
+            "val_key": val_key,
+            "seq_len": seq_len,
+            "batch_size": batch_size,
+            "max_tokens": max_tokens,
+            "eval_interval": eval_interval,
+            "curriculum_mode": curriculum_mode,
+            "replay_sources": replay_sources_cfg,
+        },
     )
 
     # H-4 fix: compute anchor val baseline BEFORE any training
@@ -687,6 +701,13 @@ def train_expansion(args):
                 deep_layer_grads.append(sum(norms) / len(norms))
             if len(deep_layer_grads) > 100:
                 deep_layer_grads.pop(0)
+
+            grads = [
+                p.grad.norm().item()
+                for p in model.parameters()
+                if getattr(p, 'grad', None) is not None
+            ]
+            global_grad_norm = sum(grads) / max(len(grads), 1) if grads else float('nan')
 
             # S-7: SI before-step snapshot
             if si:
@@ -816,6 +837,7 @@ def train_expansion(args):
                             scheduler.state_dict() if scheduler else None
                         ),
                         anchor_val=anchor_val,   # ← H-4 fix
+                        forgetting_ema=forgetting_ema,
                     )
 
                 # Log
@@ -827,11 +849,23 @@ def train_expansion(args):
                         scheduler.get_current_fraction()
                         if scheduler else float('nan')
                     ),
+                    "status"       : (
+                        curriculum_log[-1]["status"]
+                        if curriculum_log else ""
+                    ),
                     "kv_div"       : kv_div,
+                    "val_key"      : val_key,
+                    "current_val"  : current_val,
+                    "best_val"     : best_val,
                     "ts_forgetting": forgetting,
-                    "forgetting_ema": forgetting_ema,
+                    "ts_forgetting_ema": forgetting_ema,
                     "replay_frac"  : getattr(train_ds, 'replay_frac', 0.0),
                     "si_penalty"   : si_penalty.item() if si else 0.0,
+                    "grad_norm"    : global_grad_norm,
+                    "deep_grad_norm": (
+                        sum(deep_layer_grads) / len(deep_layer_grads)
+                        if deep_layer_grads else float('nan')
+                    ),
                 }
                 logger.log(
                     step, tokens_seen, train_loss, val_losses,
