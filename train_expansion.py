@@ -46,6 +46,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 
@@ -79,6 +80,199 @@ from train_curriculum import (
     save_checkpoint,
 )
 from src.capability_logger import run_capability_logging
+
+
+# ─── Domain-Relative Plateau Detector (S-3 fix for K-3 + H-6) ──────────────────
+
+class DomainRelativePlateauDetector:
+    """
+    Replaces the absolute min_delta PlateauDetector for expansion stages.
+
+    Fires when relative improvement falls below rel_min_delta.
+    Example: rel_min_delta=0.001 means stop if loss hasn't improved by 0.1%.
+    At WP loss ~4.4 this is 0.0044 absolute — 2x more lenient than the old
+    fixed 0.002 threshold, fixing the premature-exit bug (K-3 / H-6).
+
+    Additional guard: min_tokens_before_exit prevents any exit before a
+    minimum number of tokens have been consumed.
+    """
+
+    def __init__(
+        self,
+        patience: int = 20,
+        rel_min_delta: float = 0.001,
+        absolute_floor: float = 0.001,
+        min_tokens_before_exit: int = 20_000_000,
+    ):
+        self.patience = patience
+        self.rel_min_delta = rel_min_delta
+        self.absolute_floor = absolute_floor
+        self.min_tokens_before_exit = min_tokens_before_exit
+        self.best = float("inf")
+        self.counter = 0
+        self._tokens_seen = 0
+
+    def set_tokens_seen(self, n: int):
+        self._tokens_seen = n
+
+    def update(self, val_loss: float) -> bool:
+        """
+        Returns True when the stage should exit (plateau detected).
+        Will not fire before min_tokens_before_exit tokens consumed.
+        """
+        # Compute loss-scale-relative threshold
+        threshold = max(
+            self.rel_min_delta * max(self.best, val_loss),
+            self.absolute_floor,
+        )
+        if val_loss < self.best - threshold:
+            self.best = val_loss
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        if self.counter >= self.patience:
+            if self._tokens_seen < self.min_tokens_before_exit:
+                print(
+                    f"  [plateau] Patience={self.patience} reached but only "
+                    f"{self._tokens_seen/1e6:.1f}M/{self.min_tokens_before_exit/1e6:.0f}M "
+                    f"min tokens seen — suppressing early exit"
+                )
+                return False
+            return True
+        return False
+
+
+# ─── Synaptic Intelligence (S-7 anti-forgetting regulariser) ──────────────────
+
+class SynapticIntelligence:
+    """
+    Online per-parameter importance tracker (Zenke et al. 2017).
+
+    Accumulates each parameter's contribution to loss reduction along the
+    gradient path during training (zero extra forward passes required).
+    At stage end, call task_completed() to consolidate importances and save
+    the new anchor point.  regularization_loss() returns the SI penalty term
+    that can be added to the task loss every step.
+
+    Usage:
+        si = SynapticIntelligence(model, si_lambda=0.05)
+        ...per step...
+        si.before_step()
+        optimizer.step()
+        si.after_step()
+        loss = task_loss + si.regularization_loss()
+        ...at stage end...
+        si.task_completed()
+    """
+
+    def __init__(self, model: SLM, si_lambda: float = 0.05, epsilon: float = 0.1):
+        self.model = model
+        self.si_lambda = si_lambda
+        self.epsilon = epsilon
+        device = next(model.parameters()).device
+
+        self.prev_params: dict = {}
+        self.omega: dict = {}
+        self.W: dict = {}
+        self._prev_step_params: dict = {}
+
+        for n, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            self.prev_params[n] = p.data.clone()
+            self.omega[n] = torch.zeros_like(p.data)
+            self.W[n] = torch.zeros_like(p.data)
+            self._prev_step_params[n] = p.data.clone()
+
+    def before_step(self):
+        """Snapshot parameter values before the optimizer step."""
+        for n, p in self.model.named_parameters():
+            if p.requires_grad:
+                self._prev_step_params[n] = p.data.clone()
+
+    def after_step(self):
+        """Accumulate path integral of importance using -grad * delta."""
+        for n, p in self.model.named_parameters():
+            if not p.requires_grad or p.grad is None:
+                continue
+            delta = p.data - self._prev_step_params[n]
+            self.W[n].add_(-p.grad.detach() * delta)
+
+    def task_completed(self):
+        """
+        Called at the end of each stage to consolidate importances.
+        Updates omega and the anchor parameter vector for the next stage.
+        """
+        for n, p in self.model.named_parameters():
+            if not p.requires_grad:
+                continue
+            delta_sq = (p.data - self.prev_params[n]).pow(2).add_(self.epsilon)
+            self.omega[n].add_(F.relu(self.W[n]) / delta_sq)
+            self.prev_params[n] = p.data.clone()
+            self.W[n].zero_()
+
+    def regularization_loss(self) -> torch.Tensor:
+        """SI penalty: sum_i omega_i * (theta_i - theta*_i)^2."""
+        device = next(self.model.parameters()).device
+        loss = torch.tensor(0.0, device=device)
+        for n, p in self.model.named_parameters():
+            if not p.requires_grad:
+                continue
+            loss = loss + (self.omega[n] * (p - self.prev_params[n]).pow(2)).sum()
+        return self.si_lambda * loss
+
+
+# ─── Progressive Layer Thaw (S-4 anti-forgetting via freezing) ───────────────
+
+class ProgressiveLayerThaw:
+    """
+    Starts with the bottom n_frozen_start layers frozen.
+    Gradually unfreezes one layer at a time from the top when:
+      - forgetting_ema < forgetting_threshold  (forgetting under control)
+      - new-domain val loss has dropped by thaw_delta since last thaw
+    """
+
+    def __init__(
+        self,
+        model: SLM,
+        n_frozen_start: int = 0,
+        forgetting_threshold: float = 0.05,
+        thaw_delta: float = 0.05,
+    ):
+        self.model = model
+        self.n_frozen = n_frozen_start
+        self.forgetting_threshold = forgetting_threshold
+        self.thaw_delta = thaw_delta
+        self.best_new_domain_val = float("inf")
+        if n_frozen_start > 0:
+            self._freeze_bottom(n_frozen_start)
+
+    def _freeze_bottom(self, n: int):
+        for i, layer in enumerate(self.model.layers):
+            req_grad = i >= n
+            for p in layer.parameters():
+                p.requires_grad_(req_grad)
+
+    def step(self, forgetting_ema: float, new_domain_val: float) -> bool:
+        """Returns True if a layer was thawed this step."""
+        if self.n_frozen == 0:
+            self.best_new_domain_val = min(self.best_new_domain_val, new_domain_val)
+            return False
+        if (
+            forgetting_ema < self.forgetting_threshold
+            and new_domain_val < self.best_new_domain_val - self.thaw_delta
+        ):
+            self.n_frozen -= 1
+            self._freeze_bottom(self.n_frozen)
+            self.best_new_domain_val = new_domain_val
+            print(
+                f"  [thaw] Unfroze bottom→{self.n_frozen} layers: "
+                f"forgetting_ema={forgetting_ema:.3f}, new_val={new_domain_val:.3f}"
+            )
+            return True
+        self.best_new_domain_val = min(self.best_new_domain_val, new_domain_val)
+        return False
 
 
 
@@ -206,7 +400,15 @@ def train_expansion(args):
     with open(args.config) as f:
         all_configs = yaml.safe_load(f)
 
-    stage_key = f"stage_{args.stage.lower()}"
+    # K-1 fix: normalise stage key so --stage Stage2 / --stage TWO also work
+    stage_key_raw = f"stage_{args.stage.lower()}"
+    # If exact match fails, try case-insensitive lookup
+    if stage_key_raw not in all_configs:
+        for k in all_configs:
+            if k.lower() == stage_key_raw.lower():
+                stage_key_raw = k
+                break
+    stage_key = stage_key_raw
     if stage_key not in all_configs:
         raise ValueError(
             f"Stage '{args.stage}' not found in config. "
@@ -233,10 +435,11 @@ def train_expansion(args):
     # ── Load source checkpoint ───────────────────────────────────────────────
     source_path = cfg["source_checkpoint"]
     print(f"[train] Loading source: {source_path}")
-    ckpt = torch.load(source_path, map_location=device, weights_only=False)
+    ckpt = torch.load(source_path, map_location="cpu", weights_only=False)
     old_cfg = ckpt["config"]
     model = SLM(old_cfg).to(device)
     model.load_state_dict(ckpt["model_state"])
+    del ckpt  # Free up CPU RAM immediately
     print(f"[train] Source model: {model.num_params()/1e6:.1f}M params, "
           f"{old_cfg.n_layers}L, d_ff={old_cfg.d_ff}")
 
@@ -303,6 +506,23 @@ def train_expansion(args):
     dataset_name = cfg["dataset"]
     val_key = cfg.get("val_key", "s0")
 
+    # H-3 / H-8 fix: read replay config from YAML so it actually gets wired in
+    replay_sources_cfg = cfg.get("replay_sources", [])
+    initial_replay_frac = float(cfg.get("initial_replay_fraction", 0.0))
+    forgetting_ema_alpha = float(cfg.get("forgetting_ema_alpha", 0.1))
+    replay_cap = float(cfg.get("replay_cap", 0.4))
+    replay_scale = float(cfg.get("replay_scale", 3.0))
+
+    # S-7: SI lambda (0 = disabled)
+    si_lambda = float(cfg.get("si_lambda", 0.02))
+    # S-4: layer freeze config
+    freeze_bottom_layers = int(cfg.get("freeze_bottom_layers", 0))
+    forgetting_thaw_threshold = float(cfg.get("forgetting_thaw_threshold", 0.05))
+    min_thaw_delta = float(cfg.get("min_thaw_delta", 0.05))
+    # K-3/H-6: relative plateau detector config
+    rel_min_delta = float(cfg.get("rel_min_delta", 0.001))
+    min_tokens_before_exit = int(cfg.get("min_tokens_before_exit", 20_000_000))
+
     # ── Optimizer with differential LR ───────────────────────────────────────
     optimizer = build_expansion_optimizer(
         model,
@@ -319,6 +539,7 @@ def train_expansion(args):
     scaler = GradScaler(device=device, enabled=(not use_bf16))
 
     # ── Curriculum dataset ───────────────────────────────────────────────────
+    # H-3 fix: pass replay_sources and initial_replay_fraction into build()
     train_ds = CurriculumStageDataset().build(
         dataset_name=dataset_name,
         tokenizer=tokenizer,
@@ -329,6 +550,8 @@ def train_expansion(args):
         mode=curriculum_mode,
         initial_fraction=initial_fraction,
         stage_name=args.stage,
+        replay_sources=replay_sources_cfg,          # ← H-3 fix
+        initial_replay_fraction=initial_replay_frac, # ← H-3 fix
     )
 
     scheduler = None
@@ -353,13 +576,39 @@ def train_expansion(args):
     tokens_seen = 0
     best_val = float("inf")
 
-    # ── Detectors ────────────────────────────────────────────────────────────
-    plateau = PlateauDetector(patience=patience, min_delta=min_delta)
+    # K-3/H-6 fix: use DomainRelativePlateauDetector instead of absolute PlateauDetector
+    plateau = DomainRelativePlateauDetector(
+        patience=patience,
+        rel_min_delta=rel_min_delta,
+        absolute_floor=min_delta,  # still acts as a floor
+        min_tokens_before_exit=min_tokens_before_exit,
+    )
     spike = SpikeDetector(window=spike_window, threshold=spike_thresh)
     logger = TrainingLogger(
         stage=f"expansion_{args.stage}",
         log_dir=args.log_dir,
     )
+
+    # H-4 fix: compute anchor val baseline BEFORE any training
+    print("[train] Computing TinyStories anchor val (forgetting baseline)...")
+    anchor_val = evaluate(
+        model, val_loaders["s0"], device, vocab_size=vocab_size
+    )
+    print(f"[train] Anchor val (s0/TinyStories): {anchor_val:.4f}")
+
+    # S-7: Synaptic Intelligence regulariser
+    si = SynapticIntelligence(model, si_lambda=si_lambda) if si_lambda > 0 else None
+
+    # S-4: Progressive layer thaw
+    thaw = ProgressiveLayerThaw(
+        model,
+        n_frozen_start=freeze_bottom_layers,
+        forgetting_threshold=forgetting_thaw_threshold,
+        thaw_delta=min_thaw_delta,
+    )
+
+    # H-8: EMA forgetting state
+    forgetting_ema: float = 0.0
 
     # ── Training loop ────────────────────────────────────────────────────────
     model.train()
@@ -413,7 +662,10 @@ def train_expansion(args):
             with autocast(
                 device_type=device, dtype=dtype, enabled=(device == "cuda")
             ):
-                _, loss = model(x, y)
+                _, task_loss = model(x, y)
+                # S-7: add SI regularisation penalty to prevent forgetting
+                si_penalty = si.regularization_loss() if si else torch.tensor(0.0)
+                loss = task_loss + si_penalty
 
             if use_bf16:
                 loss.backward()
@@ -436,11 +688,19 @@ def train_expansion(args):
             if len(deep_layer_grads) > 100:
                 deep_layer_grads.pop(0)
 
+            # S-7: SI before-step snapshot
+            if si:
+                si.before_step()
+
             if use_bf16:
                 optimizer.step()
             else:
                 scaler.step(optimizer)
                 scaler.update()
+
+            # S-7: SI after-step accumulation
+            if si:
+                si.after_step()
 
             tokens_seen += tokens_per_step
             loss_window.append(loss.item())
@@ -476,14 +736,29 @@ def train_expansion(args):
                     val_key, val_losses.get("s0", 0)
                 )
 
-                # Check TinyStories forgetting
+                # Check TinyStories forgetting + adaptive replay (H-8 fix)
                 ts_val = val_losses.get("s0", None)
+                forgetting = 0.0
                 if ts_val is not None:
-                    source_val = ckpt.get("best_val_loss", float("inf"))
-                    forgetting = (ts_val - source_val) / max(source_val, 1e-6)
+                    forgetting = max(0.0, (ts_val - anchor_val) / max(anchor_val, 1e-6))
+                    # H-8: EMA-smooth the forgetting signal
+                    forgetting_ema = (
+                        forgetting_ema_alpha * forgetting
+                        + (1 - forgetting_ema_alpha) * forgetting_ema
+                    )
+                    # H-3/H-8: update replay fraction proportional to forgetting
+                    if train_ds.replay_chunks:
+                        new_replay_frac = min(replay_cap, replay_scale * forgetting_ema)
+                        train_ds.set_replay_fraction(new_replay_frac)
+
                     if forgetting > 0.05:
-                        print(f"  [WARNING] TinyStories forgetting: "
-                              f"{forgetting*100:.1f}% degradation")
+                        print(
+                            f"  [WARNING] TinyStories forgetting: "
+                            f"{forgetting*100:.1f}%  EMA: {forgetting_ema*100:.1f}%"
+                        )
+
+                # S-4: progressive layer thaw
+                thaw.step(forgetting_ema, current_val)
 
                 # Deep layer stability
                 deep_stable = True
@@ -531,7 +806,7 @@ def train_expansion(args):
                 )
                 print(f"  [tiers] {tier_str}")
 
-                # Save best
+                # H-4 fix: persist anchor_val in every best-model checkpoint
                 if current_val < best_val:
                     best_val = current_val
                     save_checkpoint(
@@ -540,26 +815,31 @@ def train_expansion(args):
                         curriculum_state=(
                             scheduler.state_dict() if scheduler else None
                         ),
+                        anchor_val=anchor_val,   # ← H-4 fix
                     )
 
                 # Log
                 curr_metrics = {
-                    "tier_easy": tier_results.get("easy", float('nan')),
-                    "tier_medium": tier_results.get("medium", float('nan')),
-                    "tier_hard": tier_results.get("hard", float('nan')),
-                    "fraction": (
+                    "tier_easy"    : tier_results.get("easy", float('nan')),
+                    "tier_medium"  : tier_results.get("medium", float('nan')),
+                    "tier_hard"    : tier_results.get("hard", float('nan')),
+                    "fraction"     : (
                         scheduler.get_current_fraction()
                         if scheduler else float('nan')
                     ),
-                    "kv_div": kv_div,
-                    "ts_forgetting": forgetting if ts_val else float('nan'),
+                    "kv_div"       : kv_div,
+                    "ts_forgetting": forgetting,
+                    "forgetting_ema": forgetting_ema,
+                    "replay_frac"  : getattr(train_ds, 'replay_frac', 0.0),
+                    "si_penalty"   : si_penalty.item() if si else 0.0,
                 }
                 logger.log(
                     step, tokens_seen, train_loss, val_losses,
                     base_lr, curriculum=curr_metrics,
                 )
 
-                # Plateau check
+                # K-3/H-6 fix: pass tokens_seen so min-token guard works
+                plateau.set_tokens_seen(tokens_seen)
                 if plateau.update(current_val):
                     exit_reason = "plateau"
                     break
@@ -568,6 +848,17 @@ def train_expansion(args):
 
         if exit_reason:
             break
+
+    # S-7: consolidate SI importances at stage end
+    if si:
+        si.task_completed()
+        omega_path = os.path.join(
+            args.checkpoint_dir, f"si_omega_stage_{args.stage}.pt"
+        )
+        # Save omega dict with CPU tensors to avoid GPU memory issues at cleanup
+        si_omega_cpu = {n: t.cpu() for n, t in si.omega.items()}
+        torch.save(si_omega_cpu, omega_path)
+        print(f"[SI] Omega importances saved → {omega_path}")
 
     pbar.close()
     logger.log_exit(exit_reason, step, tokens_seen)

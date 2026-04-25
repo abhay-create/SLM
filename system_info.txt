@@ -1,0 +1,74 @@
+===== OS =====
+NAME="Red Hat Enterprise Linux"
+VERSION="8.10 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.10"
+PLATFORM_ID="platform:el8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.10 (Ootpa)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:redhat:enterprise_linux:8::baseos"
+HOME_URL="https://www.redhat.com/"
+DOCUMENTATION_URL="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8"
+BUG_REPORT_URL="https://issues.redhat.com/"
+
+REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 8"
+REDHAT_BUGZILLA_PRODUCT_VERSION=8.10
+REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+REDHAT_SUPPORT_PRODUCT_VERSION="8.10"
+\n===== KERNEL =====
+Linux redhatacademy20 4.18.0-553.105.1.el8_10.x86_64 #1 SMP Sat Feb 7 00:49:44 EST 2026 x86_64 x86_64 x86_64 GNU/Linux
+\n===== CPU =====
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              24
+On-line CPU(s) list: 0-23
+Thread(s) per core:  1
+Core(s) per socket:  16
+Socket(s):           1
+NUMA node(s):        1
+Vendor ID:           GenuineIntel
+CPU family:          6
+Model:               151
+Model name:          12th Gen Intel(R) Core(TM) i9-12900K
+Stepping:            2
+CPU MHz:             3200.000
+CPU max MHz:         5200.0000
+CPU min MHz:         800.0000
+BogoMIPS:            6374.40
+Virtualization:      VT-x
+L1d cache:           48K
+L1i cache:           32K
+L2 cache:            1280K
+L3 cache:            30720K
+NUMA node0 CPU(s):   0-23
+Flags:               fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect avx_vnni dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi umip pku ospke waitpkg gfni vaes vpclmulqdq tme rdpid movdiri movdir64b fsrm md_clear serialize pconfig arch_lbr flush_l1d arch_capabilities
+\n===== MEMORY =====
+              total        used        free      shared  buff/cache   available
+Mem:           62Gi        15Gi        12Gi       189Mi        34Gi        45Gi
+Swap:          31Gi       5.9Gi        25Gi
+\n===== DISK =====
+NAME          MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+nvme0n1       259:0    0 931.5G  0 disk 
+├─nvme0n1p1   259:1    0   600M  0 part /boot/efi
+├─nvme0n1p2   259:2    0     1G  0 part /boot
+└─nvme0n1p3   259:3    0 929.9G  0 part 
+  ├─rhel-root 253:0    0    70G  0 lvm  /
+  ├─rhel-swap 253:1    0  31.4G  0 lvm  [SWAP]
+  └─rhel-home 253:2    0 828.5G  0 lvm  /home
+\n===== GPU =====
+00:02.0 VGA compatible controller: Intel Corporation AlderLake-S GT1 (rev 0c)
+01:00.0 VGA compatible controller: NVIDIA Corporation AD106 [GeForce RTX 4060 Ti] (rev a1)
+\n===== PYTHON (CONDA) =====
+/home/user21/miniconda3/bin/python
+Python 3.13.12
+\n===== CONDA ENV =====
+
+# conda environments:
+#
+# * -> active
+# + -> frozen
+base                 *   /home/user21/miniconda3
+vlm_bias                 /home/user21/miniconda3/envs/vlm_bias
+

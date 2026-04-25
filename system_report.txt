@@ -1,0 +1,505 @@
+redhatacademy20
+    description: Computer
+    width: 64 bits
+    capabilities: smp vsyscall32
+  *-core
+       description: Motherboard
+       physical id: 0
+     *-memory
+          description: System memory
+          physical id: 0
+          size: 66GiB
+     *-cpu
+          product: 12th Gen Intel(R) Core(TM) i9-12900K
+          vendor: Intel Corp.
+          physical id: 1
+          bus info: cpu@0
+          version: 6.151.2
+          size: 4907MHz
+          capacity: 5200MHz
+          width: 64 bits
+          capabilities: fpu fpu_exception wp vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp x86-64 constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect avx_vnni dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi umip pku ospke waitpkg gfni vaes vpclmulqdq tme rdpid movdiri movdir64b fsrm md_clear serialize pconfig arch_lbr flush_l1d arch_capabilities cpufreq
+          configuration: microcode=61
+     *-pci
+          description: Host bridge
+          product: 12th Gen Core Processor Host Bridge/DRAM Registers
+          vendor: Intel Corporation
+          physical id: 100
+          bus info: pci@0000:00:00.0
+          version: 02
+          width: 32 bits
+          clock: 33MHz
+        *-pci:0
+             description: PCI bridge
+             product: 12th Gen Core Processor PCI Express x16 Controller #1
+             vendor: Intel Corporation
+             physical id: 1
+             bus info: pci@0000:00:01.0
+             version: 02
+             width: 32 bits
+             clock: 33MHz
+             capabilities: pci normal_decode bus_master cap_list
+             configuration: driver=pcieport
+             resources: irq:120 ioport:5000(size=4096) memory:42000000-431fffff ioport:60000000(size=301989888)
+           *-display
+                description: VGA compatible controller
+                product: AD106 [GeForce RTX 4060 Ti]
+                vendor: NVIDIA Corporation
+                physical id: 0
+                bus info: pci@0000:01:00.0
+                version: a1
+                width: 64 bits
+                clock: 33MHz
+                capabilities: vga_controller bus_master cap_list rom
+                configuration: driver=nvidia latency=0
+                resources: irq:171 memory:42000000-42ffffff memory:60000000-6fffffff memory:70000000-71ffffff ioport:5000(size=128) memory:43000000-4307ffff
+           *-multimedia
+                description: Audio device
+                product: NVIDIA Corporation
+                vendor: NVIDIA Corporation
+                physical id: 0.1
+                bus info: pci@0000:01:00.1
+                logical name: card1
+                logical name: /dev/snd/controlC1
+                logical name: /dev/snd/hwC1D0
+                logical name: /dev/snd/pcmC1D3p
+                logical name: /dev/snd/pcmC1D7p
+                logical name: /dev/snd/pcmC1D8p
+                logical name: /dev/snd/pcmC1D9p
+                version: a1
+                width: 32 bits
+                clock: 33MHz
+                capabilities: bus_master cap_list
+                configuration: driver=snd_hda_intel latency=0
+                resources: irq:17 memory:43080000-43083fff
+              *-input:0
+                   product: HDA NVidia HDMI/DP,pcm=9
+                   physical id: 0
+                   logical name: input10
+                   logical name: /dev/input/event10
+              *-input:1
+                   product: HDA NVidia HDMI/DP,pcm=3
+                   physical id: 1
+                   logical name: input7
+                   logical name: /dev/input/event7
+              *-input:2
+                   product: HDA NVidia HDMI/DP,pcm=7
+                   physical id: 2
+                   logical name: input8
+                   logical name: /dev/input/event8
+              *-input:3
+                   product: HDA NVidia HDMI/DP,pcm=8
+                   physical id: 3
+                   logical name: input9
+                   logical name: /dev/input/event9
+        *-display
+             description: VGA compatible controller
+             product: AlderLake-S GT1
+             vendor: Intel Corporation
+             physical id: 2
+             bus info: pci@0000:00:02.0
+             logical name: /dev/fb0
+             version: 0c
+             width: 64 bits
+             clock: 33MHz
+             capabilities: vga_controller bus_master cap_list fb
+             configuration: depth=32 driver=i915 latency=0 resolution=1920,1080
+             resources: irq:152 memory:41000000-41ffffff memory:50000000-5fffffff ioport:6000(size=64) memory:c0000-dffff memory:45000000-4bffffff
+        *-pci:1
+             description: PCI bridge
+             product: 12th Gen Core Processor PCI Express x4 Controller #0
+             vendor: Intel Corporation
+             physical id: 6
+             bus info: pci@0000:00:06.0
+             version: 02
+             width: 32 bits
+             clock: 33MHz
+             capabilities: pci normal_decode bus_master cap_list
+             configuration: driver=pcieport
+             resources: irq:121 memory:43f00000-440fffff
+           *-nvme
+                description: NVMe device
+                product: CT1000P3SSD8
+                vendor: Micron Technology Inc
+                physical id: 0
+                bus info: pci@0000:02:00.0
+                logical name: /dev/nvme0
+                version: P9CR313
+                serial: 241447FA57D4
+                width: 64 bits
+                clock: 33MHz
+                capabilities: nvme nvm_express bus_master cap_list
+                configuration: driver=nvme latency=0 nqn=nqn.2016-08.com.micron:nvme:nvm-subsystem-sn-241447FA57D4 state=live
+                resources: irq:16 memory:43f00000-43f03fff
+              *-namespace:0
+                   description: NVMe disk
+                   physical id: 0
+                   logical name: /dev/ng0n1
+              *-namespace:1
+                   description: NVMe disk
+                   physical id: 1
+                   bus info: nvme@0:1
+                   logical name: /dev/nvme0n1
+                   configuration: wwid=eui.000000000000000100a0752447fa57d4
+        *-usb
+             description: USB controller
+             product: Raptor Lake USB 3.2 Gen 2x2 (20 Gb/s) XHCI Host Controller
+             vendor: Intel Corporation
+             physical id: 14
+             bus info: pci@0000:00:14.0
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: xhci bus_master cap_list
+             configuration: driver=xhci_hcd latency=0
+             resources: irq:124 memory:44100000-4410ffff
+        *-memory UNCLAIMED
+             description: RAM memory
+             product: Raptor Lake-S PCH Shared SRAM
+             vendor: Intel Corporation
+             physical id: 14.2
+             bus info: pci@0000:00:14.2
+             version: 11
+             width: 64 bits
+             clock: 33MHz (30.3ns)
+             capabilities: cap_list
+             configuration: latency=0
+             resources: memory:44118000-4411bfff memory:44128000-44128fff
+        *-network
+             description: Ethernet interface
+             product: Raptor Lake-S PCH CNVi WiFi
+             vendor: Intel Corporation
+             physical id: 14.3
+             bus info: pci@0000:00:14.3
+             logical name: wlo1
+             version: 11
+             serial: da:d7:4b:af:33:80
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list ethernet physical
+             configuration: broadcast=yes driver=iwlwifi driverversion=4.18.0-553.105.1.el8_10.x86_64 firmware=78.3bfdc55f.0 so-a0-gf-a0-78.uc latency=0 link=no multicast=yes
+             resources: irq:18 memory:44114000-44117fff
+        *-serial:0
+             description: Serial bus controller
+             product: Raptor Lake Serial IO I2C Host Controller #0
+             vendor: Intel Corporation
+             physical id: 15
+             bus info: pci@0000:00:15.0
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:27 memory:40400000-40400fff
+        *-serial:1
+             description: Serial bus controller
+             product: Raptor Lake Serial IO I2C Host Controller #1
+             vendor: Intel Corporation
+             physical id: 15.1
+             bus info: pci@0000:00:15.1
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:40 memory:40401000-40401fff
+        *-serial:2
+             description: Serial bus controller
+             product: Raptor Lake Serial IO I2C Host Controller #2
+             vendor: Intel Corporation
+             physical id: 15.2
+             bus info: pci@0000:00:15.2
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:29 memory:40402000-40402fff
+        *-serial:3
+             description: Serial bus controller
+             product: Intel Corporation
+             vendor: Intel Corporation
+             physical id: 15.3
+             bus info: pci@0000:00:15.3
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:43 memory:40403000-40403fff
+        *-communication
+             description: Communication controller
+             product: Raptor Lake CSME HECI #1
+             vendor: Intel Corporation
+             physical id: 16
+             bus info: pci@0000:00:16.0
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=mei_me latency=0
+             resources: irq:153 memory:44123000-44123fff
+        *-sata
+             description: SATA controller
+             product: Raptor Lake SATA AHCI Controller
+             vendor: Intel Corporation
+             physical id: 17
+             bus info: pci@0000:00:17.0
+             version: 11
+             width: 32 bits
+             clock: 66MHz
+             capabilities: sata ahci_1.0 bus_master cap_list
+             configuration: driver=ahci latency=0
+             resources: irq:151 memory:4411c000-4411dfff memory:44122000-441220ff ioport:6090(size=8) ioport:6080(size=4) ioport:6060(size=32) memory:44121000-441217ff
+        *-serial:4
+             description: Serial bus controller
+             product: Intel Corporation
+             vendor: Intel Corporation
+             physical id: 19
+             bus info: pci@0000:00:19.0
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:31 memory:44120000-44120fff
+        *-serial:5
+             description: Serial bus controller
+             product: Intel Corporation
+             vendor: Intel Corporation
+             physical id: 19.1
+             bus info: pci@0000:00:19.1
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=intel-lpss latency=0
+             resources: irq:32 memory:4411f000-4411ffff
+        *-pci:2
+             description: PCI bridge
+             product: Raptor Lake PCI Express Root Port #1
+             vendor: Intel Corporation
+             physical id: 1c
+             bus info: pci@0000:00:1c.0
+             version: 11
+             width: 32 bits
+             clock: 33MHz
+             capabilities: pci normal_decode bus_master cap_list
+             configuration: driver=pcieport
+             resources: irq:122 ioport:4000(size=4096) memory:43300000-43cfffff ioport:72100000(size=10485760)
+        *-pci:3
+             description: PCI bridge
+             product: Intel Corporation
+             vendor: Intel Corporation
+             physical id: 1c.2
+             bus info: pci@0000:00:1c.2
+             version: 11
+             width: 32 bits
+             clock: 33MHz
+             capabilities: pci normal_decode bus_master cap_list
+             configuration: driver=pcieport
+             resources: irq:123 ioport:3000(size=4096) memory:43d00000-43efffff
+           *-network
+                description: Ethernet interface
+                product: RTL8125 2.5GbE Controller
+                vendor: Realtek Semiconductor Co., Ltd.
+                physical id: 0
+                bus info: pci@0000:04:00.0
+                logical name: enp4s0
+                version: 05
+                serial: 10:ff:e0:63:c2:2c
+                size: 1Gbit/s
+                capacity: 1Gbit/s
+                width: 64 bits
+                clock: 33MHz
+                capabilities: bus_master cap_list ethernet physical tp mii 10bt 10bt-fd 100bt 100bt-fd 1000bt-fd autonegotiation
+                configuration: autonegotiation=on broadcast=yes driver=r8169 driverversion=4.18.0-553.105.1.el8_10.x86_64 duplex=full firmware=rtl8125b-2_0.0.2 07/13/20 ip=172.16.121.72 latency=0 link=yes multicast=yes port=MII speed=1Gbit/s
+                resources: irq:18 ioport:3000(size=256) memory:43d00000-43d0ffff memory:43d10000-43d13fff
+        *-isa
+             description: ISA bridge
+             product: Intel Corporation
+             vendor: Intel Corporation
+             physical id: 1f
+             bus info: pci@0000:00:1f.0
+             version: 11
+             width: 32 bits
+             clock: 33MHz
+             capabilities: isa bus_master
+             configuration: latency=0
+           *-pnp00:00
+                product: PnP device PNP0c02
+                physical id: 0
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:01
+                product: PnP device PNP0501
+                physical id: 1
+                capabilities: pnp
+                configuration: driver=serial
+           *-pnp00:02
+                product: PnP device PNP0c02
+                physical id: 2
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:03
+                product: PnP device PNP0c02
+                physical id: 3
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:04
+                product: PnP device PNP0c02
+                physical id: 4
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:05
+                product: PnP device PNP0c02
+                physical id: 5
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:06
+                product: PnP device PNP0c02
+                physical id: 6
+                capabilities: pnp
+                configuration: driver=system
+           *-pnp00:07
+                product: PnP device PNP0c02
+                physical id: 7
+                capabilities: pnp
+                configuration: driver=system
+        *-multimedia
+             description: Audio device
+             product: Raptor Lake High Definition Audio Controller
+             vendor: Intel Corporation
+             physical id: 1f.3
+             bus info: pci@0000:00:1f.3
+             logical name: card0
+             logical name: /dev/snd/controlC0
+             logical name: /dev/snd/hwC0D0
+             logical name: /dev/snd/hwC0D2
+             logical name: /dev/snd/pcmC0D0c
+             logical name: /dev/snd/pcmC0D0p
+             logical name: /dev/snd/pcmC0D1p
+             logical name: /dev/snd/pcmC0D2c
+             logical name: /dev/snd/pcmC0D3p
+             logical name: /dev/snd/pcmC0D7p
+             logical name: /dev/snd/pcmC0D8p
+             logical name: /dev/snd/pcmC0D9p
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             capabilities: bus_master cap_list
+             configuration: driver=snd_hda_intel latency=32
+             resources: irq:170 memory:44110000-44113fff memory:43200000-432fffff
+           *-input:0
+                product: HDA Intel PCH Front Mic
+                physical id: 0
+                logical name: input11
+                logical name: /dev/input/event11
+           *-input:1
+                product: HDA Intel PCH Rear Mic
+                physical id: 1
+                logical name: input12
+                logical name: /dev/input/event12
+           *-input:2
+                product: HDA Intel PCH Line
+                physical id: 2
+                logical name: input13
+                logical name: /dev/input/event13
+           *-input:3
+                product: HDA Intel PCH Line Out
+                physical id: 3
+                logical name: input14
+                logical name: /dev/input/event14
+           *-input:4
+                product: HDA Intel PCH Front Headphone
+                physical id: 4
+                logical name: input15
+                logical name: /dev/input/event15
+           *-input:5
+                product: HDA Intel PCH HDMI/DP,pcm=3
+                physical id: 5
+                logical name: input16
+                logical name: /dev/input/event16
+           *-input:6
+                product: HDA Intel PCH HDMI/DP,pcm=7
+                physical id: 6
+                logical name: input17
+                logical name: /dev/input/event17
+           *-input:7
+                product: HDA Intel PCH HDMI/DP,pcm=8
+                physical id: 7
+                logical name: input18
+                logical name: /dev/input/event18
+           *-input:8
+                product: HDA Intel PCH HDMI/DP,pcm=9
+                physical id: 8
+                logical name: input19
+                logical name: /dev/input/event19
+        *-serial:6
+             description: SMBus
+             product: Raptor Lake-S PCH SMBus Controller
+             vendor: Intel Corporation
+             physical id: 1f.4
+             bus info: pci@0000:00:1f.4
+             version: 11
+             width: 64 bits
+             clock: 33MHz
+             configuration: driver=i801_smbus latency=0
+             resources: irq:18 memory:4411e000-4411e0ff ioport:efa0(size=32)
+        *-serial:7 UNCLAIMED
+             description: Serial bus controller
+             product: Raptor Lake SPI (flash) Controller
+             vendor: Intel Corporation
+             physical id: 1f.5
+             bus info: pci@0000:00:1f.5
+             version: 11
+             width: 32 bits
+             clock: 33MHz
+             configuration: latency=0
+             resources: memory:40404000-40404fff
+  *-input:0
+       product: Sleep Button
+       physical id: 1
+       logical name: input0
+       logical name: /dev/input/event0
+       capabilities: platform
+  *-input:1
+       product: Power Button
+       physical id: 2
+       logical name: input1
+       logical name: /dev/input/event1
+       capabilities: platform
+  *-input:2
+       product: Power Button
+       physical id: 3
+       logical name: input2
+       logical name: /dev/input/event2
+       capabilities: platform
+  *-input:3
+       product: Lenovo Lenovo Traditional USB Keyboard
+       physical id: 4
+       logical name: input3
+       logical name: /dev/input/event3
+       logical name: input3::capslock
+       logical name: input3::numlock
+       logical name: input3::scrolllock
+       capabilities: usb
+  *-input:4
+       product: PixArt Lenovo USB Optical Mouse
+       physical id: 5
+       logical name: input32
+       logical name: /dev/input/event4
+       logical name: /dev/input/mouse0
+       capabilities: usb
+  *-input:5
+       product: Video Bus
+       physical id: 6
+       logical name: input5
+       logical name: /dev/input/event5
+       capabilities: platform
+  *-input:6
+       product: PC Speaker
+       physical id: 7
+       logical name: input6
+       logical name: /dev/input/event6
+       capabilities: isa

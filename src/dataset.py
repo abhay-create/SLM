@@ -16,6 +16,8 @@ file. Val sets are built/cached once and reused across stages to allow
 consistent cross-domain tracking.
 """
 
+import glob
+import hashlib
 import os
 import pickle
 import random
@@ -119,37 +121,94 @@ def _iter_fineweb(min_score: float = 3.0) -> Iterator[str]:
             yield ex["text"]
 
 
+# ─── Hash-based deterministic val split (S-5 fix for H-1) ──────────────────
+
+def _hash_is_val(text: str, val_fraction: float, seed: str = "slm_val") -> bool:
+    """
+    Returns True if this document belongs in the held-out validation set.
+    Uses MD5 of a fixed seed + first 64 chars, so the split is deterministic
+    on document content (not on iterator order), making it resume-safe.
+    """
+    key = (seed + text[:64]).encode("utf-8")
+    h = int(hashlib.md5(key).hexdigest(), 16)
+    return (h % 10000) < int(val_fraction * 10000)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 def _iter_rocstories() -> Iterator[str]:
+    """Loops over ROCStories training docs (excludes val-split documents)."""
     from datasets import load_dataset
-    ds = load_dataset(
-        "mintujupally/ROCStories",
-        split="train",
-    )
+    ds = load_dataset("mintujupally/ROCStories", split="train")
     while True:
         for ex in ds:
-            yield ex.get("text", ex.get("story", ""))
+            text = ex.get("text", ex.get("story", ""))
+            if text and not _hash_is_val(text, val_fraction=0.10, seed="slm_roc_val"):
+                yield text
+
+
+def _iter_rocstories_val(n_docs: int) -> Iterator[str]:
+    """One-pass iterator over the held-out ROCStories val docs."""
+    from datasets import load_dataset
+    ds = load_dataset("mintujupally/ROCStories", split="train")
+    count = 0
+    for ex in ds:
+        text = ex.get("text", ex.get("story", ""))
+        if text and _hash_is_val(text, val_fraction=0.10, seed="slm_roc_val"):
+            yield text
+            count += 1
+            if count >= n_docs:
+                break
 
 
 def _iter_simplestories() -> Iterator[str]:
+    """Loops over SimpleStories training docs (excludes val-split documents)."""
     from datasets import load_dataset
-    ds = load_dataset(
-        "SimpleStories/SimpleStories",
-        split="train",
-    )
+    ds = load_dataset("SimpleStories/SimpleStories", split="train")
     while True:
         for ex in ds:
-            yield ex.get("story", ex.get("text", ""))
+            text = ex.get("story", ex.get("text", ""))
+            if text and not _hash_is_val(text, val_fraction=0.10, seed="slm_simple_val"):
+                yield text
+
+
+def _iter_simplestories_val(n_docs: int) -> Iterator[str]:
+    """One-pass iterator over the held-out SimpleStories val docs."""
+    from datasets import load_dataset
+    ds = load_dataset("SimpleStories/SimpleStories", split="train")
+    count = 0
+    for ex in ds:
+        text = ex.get("story", ex.get("text", ""))
+        if text and _hash_is_val(text, val_fraction=0.10, seed="slm_simple_val"):
+            yield text
+            count += 1
+            if count >= n_docs:
+                break
 
 
 def _iter_children_stories() -> Iterator[str]:
+    """Loops over Children-Stories training docs (excludes val-split documents)."""
     from datasets import load_dataset
-    ds = load_dataset(
-        "ajibawa-2023/Children-Stories-Collection",
-        split="train",
-    )
+    ds = load_dataset("ajibawa-2023/Children-Stories-Collection", split="train")
     while True:
         for ex in ds:
-            yield ex.get("text", ex.get("story", ""))
+            text = ex.get("text", ex.get("story", ""))
+            if text and not _hash_is_val(text, val_fraction=0.10, seed="slm_child_val"):
+                yield text
+
+
+def _iter_children_stories_val(n_docs: int) -> Iterator[str]:
+    """One-pass iterator over the held-out Children-Stories val docs."""
+    from datasets import load_dataset
+    ds = load_dataset("ajibawa-2023/Children-Stories-Collection", split="train")
+    count = 0
+    for ex in ds:
+        text = ex.get("text", ex.get("story", ""))
+        if text and _hash_is_val(text, val_fraction=0.10, seed="slm_child_val"):
+            yield text
+            count += 1
+            if count >= n_docs:
+                break
 
 
 # ─── Train iterator dispatcher ────────────────────────────────────────────────
@@ -159,27 +218,36 @@ def get_train_iter(dataset_name) -> Iterator[str]:
     Maps dataset_name (from yaml config) to its text iterator.
     If dataset_name is a string, returns that iterator.
     If dataset_name is a dict mapping names to weights, returns a mixed iterator.
+
+    Imports are performed lazily inside each lambda so that optional
+    modules (writingprompts_dataset, legal_dataset) are only loaded when
+    the corresponding dataset is actually requested.
     """
     if isinstance(dataset_name, dict):
         return get_mixed_train_iter(dataset_name)
 
-    from src.legal_dataset import iter_legal_documents
-    from src.writingprompts_dataset import iter_writingprompts
-    
     dispatch = {
-        "tinystories"      : lambda: _iter_tinystories("train"),
-        "legal_documents"  : lambda: iter_legal_documents(),
-        "babylm_easy"      : lambda: _iter_babylm(BABYLM_EASY),
-        "babylm_hard"      : lambda: _iter_babylm(BABYLM_HARD),
-        "simplewiki"       : _iter_simplewiki,
-        "fineweb_edu"      : _iter_fineweb,
-        "writingprompts"   : lambda: iter_writingprompts("train"),
-        "writingprompts_easy": lambda: iter_writingprompts("train", max_length_filter=500),
-        "rocstories"       : _iter_rocstories,
-        "simplestories"    : _iter_simplestories,
-        "children_stories" : _iter_children_stories,
+        "tinystories"        : lambda: _iter_tinystories("train"),
+        "legal_documents"    : lambda: __import__(
+                                    "src.legal_dataset", fromlist=["iter_legal_documents"]
+                                ).iter_legal_documents(),
+        "babylm_easy"        : lambda: _iter_babylm(BABYLM_EASY),
+        "babylm_hard"        : lambda: _iter_babylm(BABYLM_HARD),
+        "simplewiki"         : _iter_simplewiki,
+        "fineweb_edu"        : _iter_fineweb,
+        "writingprompts"     : lambda: __import__(
+                                    "src.writingprompts_dataset",
+                                    fromlist=["iter_writingprompts"]
+                                ).iter_writingprompts("train"),
+        "writingprompts_easy": lambda: __import__(
+                                    "src.writingprompts_dataset",
+                                    fromlist=["iter_writingprompts"]
+                                ).iter_writingprompts("train", max_length_filter=500),
+        "rocstories"         : _iter_rocstories,
+        "simplestories"      : _iter_simplestories,
+        "children_stories"   : _iter_children_stories,
     }
-    
+
     if dataset_name not in dispatch:
         raise ValueError(
             f"Unknown dataset_name '{dataset_name}'. "
@@ -279,25 +347,16 @@ def get_val_iter(dataset_name: str, n_docs: int, seed: int = 42) -> Iterator[str
             count += 1
             
     elif dataset_name == "rocstories":
-        count = 0
-        for text in _iter_rocstories():
-            if count >= n_docs: break
-            yield text
-            count += 1
-            
+        # H-1 fix: use hash-based held-out val split, not the training iterator
+        yield from _iter_rocstories_val(n_docs)
+
     elif dataset_name == "simplestories":
-        count = 0
-        for text in _iter_simplestories():
-            if count >= n_docs: break
-            yield text
-            count += 1
-            
+        # H-1 fix: use hash-based held-out val split
+        yield from _iter_simplestories_val(n_docs)
+
     elif dataset_name == "children_stories":
-        count = 0
-        for text in _iter_children_stories():
-            if count >= n_docs: break
-            yield text
-            count += 1
+        # H-1 fix: use hash-based held-out val split
+        yield from _iter_children_stories_val(n_docs)
 
     else:
         raise ValueError(f"Unknown dataset_name for val: {dataset_name}")
@@ -427,9 +486,16 @@ def _load_replay_chunks(
                       f"(pattern: {pattern}) — skipping")
                 continue
 
-            # Use the closest seq_len version (prefer larger, then smaller)
-            cache_path = matches[-1]  # Start with the largest
-            source_seq_len = int(cache_path.split('seq')[-1].split('.pkl')[0])
+            # H-9 fix: sort numerically (not lexicographically) so seq512 > seq64
+            def _extract_seqlen(p: str) -> int:
+                try:
+                    return int(p.split('seq')[-1].split('.pkl')[0])
+                except (ValueError, IndexError):
+                    return 0
+
+            matches_by_seqlen = sorted(matches, key=_extract_seqlen)
+            cache_path = matches_by_seqlen[-1]  # now truly the largest seq_len
+            source_seq_len = _extract_seqlen(cache_path)
             print(f"[dataset] Loading replay source '{ds_name}' from {cache_path} "
                   f"(source: seq_len={source_seq_len}, target: seq_len={target_seq_len})")
             with open(cache_path, "rb") as f:

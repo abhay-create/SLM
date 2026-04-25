@@ -16,7 +16,7 @@ stage_2:
   clone_from: [3, 4, 5]       # 0-indexed source layers to clone
   noise_std: 0.01             # Symmetry-breaking noise (mandatory)
   new_ctx_len: 384
-  source_checkpoint: "checkpoints/stagefull_dataset_curriculum_adaptive_best.pt"
+  source_checkpoint: "checkpoints/TinyStoriesWithCurriculum.pt"
 
   # Training config
   dataset:
@@ -45,6 +45,26 @@ stage_2:
 
   # Curriculum settings
   curriculum_mode: random     # Using explicit dataset mixing
+
+  # Anti-forgetting config (H-3 / H-8 / H-4 fixes)
+  replay_sources:
+    - tinystories
+  initial_replay_fraction: 0.15
+  forgetting_ema_alpha: 0.1
+  replay_cap: 0.40
+  replay_scale: 3.0
+
+  # Relative plateau detector (K-3 / H-6 fix)
+  rel_min_delta: 0.001
+  min_tokens_before_exit: 20_000_000
+
+  # Synaptic Intelligence regulariser (S-7)
+  si_lambda: 0.02
+
+  # Progressive layer thaw (S-4)
+  freeze_bottom_layers: 0    # no freeze for stage 2 (all layers are stable)
+  forgetting_thaw_threshold: 0.05
+  min_thaw_delta: 0.05
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Stage 3: SimpleStories + Children-Stories-Collection
@@ -86,6 +106,27 @@ stage_3:
   new_lr_mult: 1.0
 
   curriculum_mode: random
+
+  # Anti-forgetting config
+  replay_sources:
+    - tinystories
+    - rocstories
+  initial_replay_fraction: 0.15
+  forgetting_ema_alpha: 0.1
+  replay_cap: 0.40
+  replay_scale: 3.0
+
+  # Relative plateau detector
+  rel_min_delta: 0.001
+  min_tokens_before_exit: 20_000_000
+
+  # Synaptic Intelligence
+  si_lambda: 0.02
+
+  # Progressive layer thaw
+  freeze_bottom_layers: 0
+  forgetting_thaw_threshold: 0.05
+  min_thaw_delta: 0.05
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Stage 4: Children-Stories + SimpleWiki
@@ -131,6 +172,28 @@ stage_4:
 
   curriculum_mode: random
 
+  # Anti-forgetting config
+  replay_sources:
+    - tinystories
+    - simplestories
+    - children_stories
+  initial_replay_fraction: 0.15
+  forgetting_ema_alpha: 0.1
+  replay_cap: 0.40
+  replay_scale: 3.0
+
+  # Relative plateau detector
+  rel_min_delta: 0.001
+  min_tokens_before_exit: 20_000_000
+
+  # Synaptic Intelligence
+  si_lambda: 0.02
+
+  # Progressive layer thaw (freeze 3 bottom layers at start of depth expansion)
+  freeze_bottom_layers: 3
+  forgetting_thaw_threshold: 0.05
+  min_thaw_delta: 0.05
+
 # ────────────────────────────────────────────────────────────────────────────────
 # Stage 5: WritingPrompts Easy
 # Goal: Learn prompt-conditioning, dialogue, longer plot setup.
@@ -169,6 +232,28 @@ stage_5:
   new_lr_mult: 1.0
 
   curriculum_mode: random
+
+  # Anti-forgetting config
+  replay_sources:
+    - tinystories
+    - children_stories
+    - simplestories
+  initial_replay_fraction: 0.15
+  forgetting_ema_alpha: 0.1
+  replay_cap: 0.35
+  replay_scale: 3.0
+
+  # Relative plateau detector
+  rel_min_delta: 0.001
+  min_tokens_before_exit: 25_000_000
+
+  # Synaptic Intelligence
+  si_lambda: 0.02
+
+  # Progressive layer thaw
+  freeze_bottom_layers: 0
+  forgetting_thaw_threshold: 0.05
+  min_thaw_delta: 0.05
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Stage 6: Full WritingPrompts
@@ -213,3 +298,24 @@ stage_6:
   new_lr_mult: 1.0
 
   curriculum_mode: random
+
+  # Anti-forgetting config
+  replay_sources:
+    - tinystories
+    - children_stories
+  initial_replay_fraction: 0.15
+  forgetting_ema_alpha: 0.1
+  replay_cap: 0.35
+  replay_scale: 3.0
+
+  # Relative plateau detector
+  rel_min_delta: 0.001
+  min_tokens_before_exit: 30_000_000
+
+  # Synaptic Intelligence
+  si_lambda: 0.015
+
+  # Progressive layer thaw (freeze 3 layers for FFN+ctx expansion)
+  freeze_bottom_layers: 3
+  forgetting_thaw_threshold: 0.05
+  min_thaw_delta: 0.05
