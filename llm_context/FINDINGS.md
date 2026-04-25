@@ -75,3 +75,22 @@ Resolution:
 
 Verification note: Local syntax and context checks passed. Full model-behavior
 tests require `torch`, which is not installed in this local Python environment.
+
+## 2026-04-25 - expand_context_length crashes on pos_emb size mismatch
+
+Evidence: Running the pipeline, Stage 2 failed at
+`expand_context_length(model, 384)` with `RuntimeError: size mismatch for
+weight: copying a param with shape torch.Size([256, 512]) from checkpoint, the
+shape in current model is torch.Size([384, 512])`.
+
+Root cause: `_copy_non_layer_parameters()` unconditionally copies `pos_emb` via
+`load_state_dict()`. When `expand_context_length()` creates a new model with
+`ctx_len=384`, the new `pos_emb` is `(384, d_model)` but the source has
+`(256, d_model)`. The copy crashes before the interpolation code runs.
+
+Fix: Added `skip_pos_emb: bool = False` parameter to
+`_copy_non_layer_parameters()`. `expand_context_length()` now calls it with
+`skip_pos_emb=True` so the interpolation code handles `pos_emb` separately.
+
+Verification: Pipeline relaunched successfully. Stage 2 training confirmed
+active with context length 384 and 58.4M params.

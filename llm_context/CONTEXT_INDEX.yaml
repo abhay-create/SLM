@@ -62,6 +62,9 @@ context_cards:
   - id: correctness-audit-2026-04-25
     path: llm_context/context_cards/correctness-audit-2026-04-25.md
     tags: [correctness, audit, generation, expansion, replay, context]
+  - id: pipeline-run-2026-04-25
+    path: llm_context/context_cards/pipeline-run-2026-04-25.md
+    tags: [training, pipeline, nohup, stages, expansion, logs]
 
 safeguards:
   - Do not store secrets in llm_context.

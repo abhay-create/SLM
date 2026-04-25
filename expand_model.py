@@ -42,10 +42,16 @@ import torch.nn.functional as F
 from src.model import SLM, SLMConfig, DecoderBlock
 
 
-def _copy_non_layer_parameters(source: SLM, target: SLM):
-    """Copy embeddings, output norm, and untied LM head parameters."""
+def _copy_non_layer_parameters(source: SLM, target: SLM, skip_pos_emb: bool = False):
+    """Copy embeddings, output norm, and untied LM head parameters.
+
+    Args:
+        skip_pos_emb: If True, do not copy positional embeddings. Use this
+            when the caller handles pos_emb separately (e.g. interpolation
+            during context-length expansion where shapes differ).
+    """
     target.tok_emb.load_state_dict(source.tok_emb.state_dict())
-    if source.pos_emb is not None and target.pos_emb is not None:
+    if not skip_pos_emb and source.pos_emb is not None and target.pos_emb is not None:
         target.pos_emb.load_state_dict(source.pos_emb.state_dict())
     target.norm_out.load_state_dict(source.norm_out.state_dict())
     if not source.cfg.weight_tying:
@@ -287,7 +293,8 @@ def expand_context_length(model: SLM, new_ctx_len: int) -> SLM:
     # Layers are identical — copy state dicts
     for i in range(old_cfg.n_layers):
         new_model.layers[i].load_state_dict(model.layers[i].state_dict())
-    _copy_non_layer_parameters(model, new_model)
+    # skip_pos_emb=True because pos_emb sizes differ; interpolation below handles it
+    _copy_non_layer_parameters(model, new_model, skip_pos_emb=True)
 
     # Handle positional embeddings
     if model.pos_emb is not None and old_cfg.pos_type == "learnable":

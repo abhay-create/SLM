@@ -8,103 +8,65 @@ This repository is a Small Language Model curriculum and expansion project. It
 trains a decoder-only Transformer from a TinyStories baseline toward richer
 narrative domains through staged curriculum training and model expansion.
 
-The local workspace has a `.git` directory and currently appears to be a usable
-Git checkout.
+The local workspace is on the `suyash` branch, up to date with `origin/suyash`.
 
 ## Active User Goal
 
-Test whether the file-based LLM context system gives future models enough
-context to inspect and improve logging/benchmarking for the training pipeline.
-The user asked for work on two fronts:
+Run the complete expansion pipeline (stages 2→6) using nohup and store training
+terminal output in the `Logs/` folder under appropriate names.
 
-- as the LLM context environment developer, verify and improve the durable
-  context handoff
-- as a training-pipeline LLM, check and update logging/benchmarking needed for
-  publishable results
+## Current Training Status
 
-## Context Adequacy Finding
+The full expansion pipeline was launched via nohup at 2026-04-25 06:54 EDT.
 
-The context system was sufficient to route inspection to the right files:
+- Script: `run_pipeline_nohup.sh` (stages 2→6 sequentially)
+- PID: 2566936 (background nohup process)
+- Log files:
+  - Combined: `Logs/pipeline_full_20260425_065439.log` (approximate timestamp)
+  - Per-stage: `Logs/pipeline_stage_<N>_<timestamp>.log`
+  - CSV metrics: `Logs/stageexpansion_<N>_*.csv` + `.meta.json` sidecars
+  - nohup wrapper: `Logs/nohup_output.log`
+- Stage 2 is actively training (step ~89/32,552, ~4.1 steps/s, ETA ~2h11m)
+- Stages 3–6 will run sequentially after Stage 2 completes
 
-- `src/logger.py`
-- `train_curriculum.py`
-- `train_expansion.py`
-- `docs/benchmarking.md`
-- `docs/training_flow.md`
+### Bug fixed before launch
 
-The missing durable memory was a dedicated logging/benchmarking contract that
-lists exact emitted metrics, artifacts, and verification commands. That gap is
-now covered by `llm_context/context_cards/logging-benchmarking-contract.md` and
-`docs/logging_and_benchmarking.md`.
+`expand_model.py` `expand_context_length()` crashed because
+`_copy_non_layer_parameters()` tried to copy position embeddings of mismatched
+sizes (old 256 → new 384). Fixed by adding `skip_pos_emb=True` parameter so the
+interpolation code handles pos_emb separately.
 
-## Current Logging/Benchmarking State
+### Available checkpoints
 
-`TrainingLogger` now emits a stable all-stage CSV schema with:
-
-- validation loss and perplexity for `s0`, `s1`, `s2`, `roc`, `simple`, `child`,
-  and `wp`
-- target metric tracking through `val_key`, `current_val`, and `best_val`
-- forgetting/replay signals including `ts_forgetting`, `ts_forgetting_ema`, and
-  `replay_frac`
-- curriculum, tier, gradient, throughput, wall-clock, and GPU-memory metrics
-- a matching `.meta.json` sidecar per run with stage/run config and schema
-
-`scripts/summarize_benchmarks.py` aggregates available CSVs into
-`docs/benchmark_summary.md` and optional JSON.
-
-## Current Correctness Audit State
-
-A second audit found and patched these mismatches:
-
-- cached generation prefill is now causal when building KV cache
-- cached generation falls back to uncached sliding-window generation if the
-  requested length exceeds `ctx_len`
-- expansion utilities now copy untied `lm_head` parameters and preserve FFN
-  biases during widening
-- curriculum replay now truncates longer replay chunks, skips shorter chunks,
-  and logs `replay_frac=0.0` when no usable replay pool loads
-- docs/context now distinguish exact FFN widening from warm-start noisy depth
-  cloning and approximate learned-position context interpolation
-- `scripts/context_replay.py check` now validates `CONTEXT_INDEX.yaml`
-  consistency, not only card front matter
-
-Local verification passed for syntax, context checks, summarizer execution, and
-a replay-loader smoke test. Full model behavior tests could not run locally
-because `torch` is not installed in the available Python runtimes.
-
-## Current Training Finding
-
-`pipeline_output.log` shows Stage 2 failed before training began:
-
-- failure happens at `model = SLM(old_cfg).to(device)` in `train_expansion.py`
-- this is before dataset loading, optimizer creation, batches, or Stage 2
-  forward/backward
-- the likely immediate cause is unavailable GPU memory, not Stage 2 `batch_size`
-  or `seq_len`
-
-The user also reported SSH access to a shared machine with multiple Linux users.
-In that setup, all users normally share the same physical GPU memory pool unless
-isolation such as MIG, containers with device restrictions, or exclusive compute
-mode is configured.
+- `checkpoints/TinyStoriesWithCurriculum.pt` — Stage 0 (45.8M params)
+- `checkpoints/stage_2_best.pt` — prior Stage 2 run
+- `checkpoints/stage_3_best.pt` — prior Stage 3 run
+- Stage 4/5/6 checkpoints do not yet exist
 
 ## Environment Notes
 
-- Reported GPU: NVIDIA GeForce RTX 4060 Ti, 16 GB VRAM.
-- `nvidia-smi` showed about 14.2 GB of 16.38 GB used.
-- A `python3` process was using about 13.8 GB VRAM.
-- `MIG M.` was `N/A`, so there is no MIG partitioning.
-- `Compute M.` was `Default`, so the GPU is not exclusive to one process or user.
+- GPU: NVIDIA GeForce RTX 4060 Ti, 16 GB VRAM
+- At pipeline launch, GPU memory was mostly free (~428 MiB used by X.org)
+- CUDA 13.1, Driver 590.48.01
+- `torch.cuda.is_available()` confirmed True
+- Machine is shared SSH (multiple Linux users share GPU unless isolated)
+
+## Logging/Benchmarking State
+
+`TrainingLogger` emits a stable all-stage CSV schema with validation loss/PPL
+for `s0`, `s1`, `s2`, `roc`, `simple`, `child`, and `wp`, target metric
+tracking, forgetting/replay signals, curriculum/tier/gradient/throughput/GPU
+metrics, and `.meta.json` run metadata sidecars.
+
+`scripts/summarize_benchmarks.py` aggregates CSVs into
+`docs/benchmark_summary.md`. The pipeline script runs it automatically on
+successful completion.
 
 ## Next Recommended Actions
 
-1. Use the context prototype for future LLM sessions.
-2. Retrieve `logging-benchmarking-contract` before changing metrics or preparing
-   stage reports.
-3. On the SSH machine, run `nvidia-smi` and `ps -o user,pid,cmd -p <PID>` before
-   starting training.
-4. Verify the Stage 0 checkpoint config on CPU before changing training
-   hyperparameters.
-5. After any real training run, run `python scripts/summarize_benchmarks.py`.
-6. On the training environment with `torch` installed, run behavioral smoke
-   tests for cached generation and expansion preservation before publishing
-   model-level claims.
+1. Monitor training: `tail -f Logs/nohup_output.log`
+2. Check GPU: `nvidia-smi`
+3. After pipeline completes, run `python scripts/summarize_benchmarks.py`
+4. Review per-stage logs in `Logs/pipeline_stage_<N>_*.log`
+5. Verify stage checkpoints in `checkpoints/`
+6. Update this context and add findings after training results are available

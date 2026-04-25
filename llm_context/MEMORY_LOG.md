@@ -21,3 +21,10 @@ Append durable session notes here. Keep entries short and factual.
 - Event: Ran a correctness/claims audit across the context mechanism and training pipeline implementation.
 - Evidence: Patched `src/model.py`, `expand_model.py`, `src/curriculum_dataset.py`, `scripts/context_replay.py`, docs, and context cards. Added `llm_context/context_cards/correctness-audit-2026-04-25.md`.
 - Follow-up: Run full model behavioral checks on an environment with `torch` installed before publishing model-level generation or expansion-preservation claims.
+
+## 2026-04-25
+
+- Actor: Antigravity (Claude Opus 4.6)
+- Event: Read LLM context system, fixed `expand_context_length()` crash in `expand_model.py` (`_copy_non_layer_parameters` was copying mismatched pos_emb shapes), created `run_pipeline_nohup.sh`, launched full expansion pipeline (stages 2→6) via nohup.
+- Evidence: Pipeline running as PID 2566936. Stage 2 training confirmed active (~4.1 steps/s). GPU was free at launch (428 MiB / 16 GB used). Logs written to `Logs/pipeline_full_*.log` and `Logs/pipeline_stage_*_*.log`.
+- Follow-up: Monitor pipeline completion. After all stages finish, run `python scripts/summarize_benchmarks.py` and review `docs/benchmark_summary.md`. Update context with training outcomes and any new findings.
