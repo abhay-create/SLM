@@ -1,0 +1,13 @@
+# Model Configuration for 100M Parameter SLM
+# Architecture: Decoder-only Transformer with RoPE, RMSNorm, SwiGLU
+
+model:
+  vocab_size: 50257        # GPT-2 tokenizer vocabulary
+  d_model: 640             # Model dimension
+  n_layers: 10             # Number of transformer blocks
+  n_heads: 10              # Number of attention heads
+  d_ff: 2560               # Feed-forward dimension (4x d_model)
+  max_seq_len: 512         # Maximum sequence length
+  dropout: 0.1             # Dropout probability
+
+# Expected parameter count: ~98-100M
