@@ -1,0 +1,29 @@
+\section{Tokenizer}
+\label{sec:tokenizer}
+
+The tokenizer is a Byte-Pair Encoding (BPE) model trained on a combined corpus
+using the HuggingFace \texttt{tokenizers} library.  The vocabulary size is
+\textbf{50{,}000} sub-word tokens, stored in
+\texttt{tokenizers/tokenizer\_corpus.json}.
+
+\textbf{Design choices:}
+\begin{itemize}[nosep]
+  \item \textbf{BPE over WordPiece or Unigram:}  BPE provides a good balance
+        between vocabulary efficiency and handling of out-of-vocabulary tokens.
+        It is also the standard for GPT-family models.
+  \item \textbf{Corpus-wide training:}  The tokenizer is trained on a combined
+        corpus spanning all domains (TinyStories, SimpleWiki, WritingPrompts,
+        etc.), ensuring stable tokenization across stages.  A tokenizer trained
+        only on children's stories would produce poor segmentation on adult
+        fiction vocabulary.
+  \item \textbf{Special tokens:}  \texttt{BOS} (id=2) and \texttt{EOS} (id=3)
+        delimit documents during chunking.
+  \item \textbf{Frozen across stages:}  The same tokenizer is used for all
+        six stages.  Changing the tokenizer mid-training would invalidate the
+        embedding matrix and cached datasets.
+\end{itemize}
+
+\textbf{Vocabulary size trade-off.}  50K tokens is a compromise: large enough
+to cover the combined vocabulary with reasonable sub-word granularity, but
+small enough that the embedding layer ($50000 \times 512 = 25.6$M parameters
+with weight tying) does not dominate the parameter budget.

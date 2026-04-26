@@ -1,0 +1,43 @@
+\section{Dataset}
+
+The training pipeline draws from seven corpora spanning a difficulty gradient
+from age-3 stories to adult fiction.
+
+\begin{table}[H]
+\centering\small
+\caption{Corpora used across training stages.}
+\begin{tabular}{llll}
+\toprule
+\textbf{Corpus} & \textbf{Source} & \textbf{Character} & \textbf{Val Key} \\
+\midrule
+TinyStories       & \texttt{roneneldan/TinyStories}         & Simple, ages 3--5      & \texttt{s0}     \\
+SimpleStories     & \texttt{SimpleStories/SimpleStories}    & Basic causal stories   & \texttt{simple} \\
+ROCStories        & \texttt{mintujupally/ROCStories}        & 5-sentence commonsense & \texttt{roc}    \\
+Children-Stories  & \texttt{ajibawa-2023/Children-Stories}   & Longer child narratives& \texttt{child}  \\
+SimpleWiki        & \texttt{wikimedia/wikipedia (simple)}   & Encyclopedic, factual  & \texttt{s1}     \\
+FineWeb-Edu       & \texttt{HuggingFaceFW/fineweb-edu}      & Educational web text   & \texttt{s2}     \\
+WritingPrompts    & \texttt{WritingPrompts (Reddit)}        & Adult fiction, prompts & \texttt{wp}     \\
+\bottomrule
+\end{tabular}
+\label{tab:corpora}
+\end{table}
+
+\textbf{Dataset mixing.}
+Each expansion stage defines a weighted mixture over corpora.
+For example, Stage~2 uses 60\% ROCStories + 40\% SimpleStories, while Stage~6
+uses 70\% WritingPrompts + 10\% each of TinyStories, Children-Stories, and
+SimpleWiki.  The mixing weights are configured in
+\texttt{configs/expansion\_stages.yaml} and implemented via a weighted random
+sampling iterator that draws from each corpus proportionally.
+
+\textbf{Train/validation splitting.}
+All corpora use a deterministic hash-based split: the MD5 hash of a fixed seed
+concatenated with the first 64 characters of each document is computed, and
+documents whose hash modulo 10{,}000 falls below a threshold (typically 10\%)
+are assigned to the validation set.  This is resume-safe and order-independent,
+ensuring the same val set is obtained across runs.  TinyStories uses its
+official \texttt{validation} split.
+
+Seven validation sets are maintained and evaluated at every checkpoint across
+all stages, enabling consistent cross-domain tracking from Stage~0 through
+Stage~6.

@@ -1,0 +1,42 @@
+\section{Training Strategy}
+
+\subsection{Optimization}
+
+All stages use AdamW with $\beta = (0.9, 0.95)$ and weight decay 0.1.
+Learning rates use cosine decay with linear warmup:
+
+\begin{table}[H]
+\centering\small
+\caption{Training hyperparameters per stage.}
+\begin{tabular}{ccccccc}
+\toprule
+\textbf{Stage} & \textbf{LR} & \textbf{Warmup} & \textbf{Batch} &
+\textbf{Seq} & \textbf{Max Tokens} & \textbf{Patience} \\
+\midrule
+2 & $1.5 \times 10^{-4}$ & 1000 & 24 & 384 & 300M & 15 \\
+3 & $1.5 \times 10^{-4}$ & 1000 & 24 & 384 & 300M & 15 \\
+4 & $1.0 \times 10^{-4}$ & 1000 & 16 & 512 & 400M & 15 \\
+5 & $1.0 \times 10^{-4}$ & 1000 & 16 & 512 & 500M & 15 \\
+6 & $8.0 \times 10^{-5}$ & 1500 &  8 & 768 & 600M & 15 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Differential learning rates.}
+At expansion stages (2, 4, 6), pretrained parameters receive a lower learning
+rate (\texttt{pretrained\_lr\_mult} = 0.5) while newly initialized parameters
+(cloned layers, widened FFN columns) use the full rate.  This prevents
+catastrophic unlearning of pretrained weights during early training.
+
+\subsection{Early Stopping}
+
+Training terminates via a \emph{relative plateau detector}.  The target
+validation metric (determined by \texttt{val\_key}) is monitored with patience
+of 15 evaluation intervals.  A relative minimum delta of 0.1\% is used, along
+with a minimum token count before exit is allowed (20--30M tokens depending on
+stage).  All stages in this run exited via \texttt{plateau}.
+
+\subsection{Gradient Clipping}
+
+Global gradient norm is clipped to 1.0.  Both global and deep-layer gradient
+norms are logged to detect instability during expansion.

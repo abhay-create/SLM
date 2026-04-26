@@ -1,0 +1,39 @@
+\section{Positional Encoding}
+\label{sec:posenc}
+
+The model supports two positional encoding strategies, configured via the
+\texttt{pos\_type} field:
+
+\subsection{Learnable Positional Embeddings (Default)}
+
+The default configuration uses a \textbf{learnable embedding table}
+$\mathbf{P} \in \mathbb{R}^{L_\text{ctx} \times d_\text{model}}$, where each
+position $i$ has a trainable vector $\mathbf{p}_i$.  The positional signal is
+added to the token embedding:
+\[
+\mathbf{h}_i^{(0)} = \mathbf{E}[x_i] + \mathbf{P}[i]
+\]
+
+This approach is simple and effective for fixed-length contexts.  The key
+challenge arises during context extension (e.g., 256$\to$384): the new model
+has more positions than the trained embedding table.
+
+\textbf{Context extension via interpolation.}
+When expanding context length, the positional embedding matrix is extended via
+1D linear interpolation along the sequence dimension.  The old embeddings
+$(L_\text{old}, d)$ are interpolated to $(L_\text{new}, d)$ using
+\texttt{F.interpolate} with \texttt{align\_corners=True}.  Existing positions
+retain near-identical values, while new positions receive smooth estimates.
+This is applied during Stages~2, 4, and 6.
+
+\subsection{Rotary Position Embeddings (RoPE)}
+
+The model also implements RoPE as an alternative.  RoPE encodes relative
+positions directly into the query and key vectors via rotation matrices:
+\[
+q'_i = \mathbf{R}_{\theta,i} \cdot q_i, \quad k'_j = \mathbf{R}_{\theta,j} \cdot k_j
+\]
+where $\mathbf{R}_{\theta,i}$ applies rotations at frequencies determined by
+$\theta = 10000^{-2k/d}$.  RoPE has the advantage that context extension is
+automatic (no learned positions to resize), but the current training uses
+learnable embeddings to maintain consistency with the TinyStories baseline.

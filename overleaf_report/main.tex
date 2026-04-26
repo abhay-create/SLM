@@ -1,0 +1,104 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+
+% ── Style ─────────────────────────────────────────────────────────────────────
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black}
+\definecolor{codebg}{RGB}{245,245,245}
+\definecolor{samplebox}{RGB}{235,245,255}
+
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{samplebox}[1][]{
+  colback=samplebox,colframe=blue!40!black,
+  fonttitle=\bfseries,title={#1},
+  breakable,boxrule=0.4pt,arc=2pt,left=6pt,right=6pt,top=4pt,bottom=4pt
+}
+
+\lstset{
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!40},
+  aboveskip=6pt,belowskip=6pt,
+  xleftmargin=4pt,xrightmargin=4pt
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small SLM: Staged Expansion of Small Language Models}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titlespacing*{\section}{0pt}{14pt}{6pt}
+\titlespacing*{\subsection}{0pt}{10pt}{4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{
+  \vspace{-1cm}
+  \textbf{SLM: Staged Curriculum Expansion of Small Language Models}\\[4pt]
+  \large From 46M to 100M Parameters via Function-Preserving Growth\\
+  and Anti-Forgetting Curriculum Training
+}
+\author{Suyash Bhiste}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+We present a staged expansion framework for growing a decoder-only Transformer
+language model from 46M to 100M parameters across six training stages.  Starting
+from a curriculum-trained TinyStories baseline, the model is progressively
+expanded in depth (6$\to$9$\to$12 layers), FFN width (2048$\to$3584), and
+context length (256$\to$384$\to$512$\to$768) while being trained on
+increasingly complex narrative domains: ROCStories, SimpleStories,
+Children-Stories, SimpleWiki, and WritingPrompts.  Each architectural expansion
+uses function-preserving or warm-start initialization to minimize output drift.
+Catastrophic forgetting is mitigated through TinyStories replay buffers,
+Synaptic Intelligence regularization, progressive layer thawing, and
+EMA-based forgetting monitoring.  The final 100M-parameter model achieves a
+TinyStories perplexity of 5.3 (vs.\ 4.7 at baseline) while reducing
+WritingPrompts perplexity from 635 to 42, demonstrating successful
+cross-domain generalization with minimal source-domain degradation.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+% ── Sections ──────────────────────────────────────────────────────────────────
+\input{sections/introduction}
+\input{sections/dataset}
+\input{sections/preprocessing}
+\input{sections/tokenizer}
+\input{sections/positional_encoding}
+\input{sections/architecture}
+\input{sections/expansion}
+\input{sections/forgetting}
+\input{sections/training}
+\input{sections/results}
+\input{sections/samples}
+\input{sections/conclusion}
+
+\end{document}

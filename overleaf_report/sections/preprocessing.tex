@@ -1,0 +1,70 @@
+\section{Preprocessing}
+
+The preprocessing pipeline converts raw text corpora into fixed-length token
+chunks suitable for autoregressive language model training.  It is designed to
+support multi-stage curriculum learning with replay buffers and
+difficulty-aware sampling.
+
+\subsection{Tokenization and Chunking}
+
+Raw documents are streamed from HuggingFace datasets and processed through a
+BPE tokenizer (Section~\ref{sec:tokenizer}).  Each document is wrapped with
+\texttt{BOS} (id=2) and \texttt{EOS} (id=3) tokens, producing the sequence:
+\[
+[\text{BOS}] \;\|\; t_1, t_2, \ldots, t_n \;\|\; [\text{EOS}]
+\]
+These per-document token sequences are concatenated into a single stream, then
+sliced into non-overlapping windows of length $(\texttt{seq\_len} + 1)$.  The
+extra token provides the target for the final position (input--target shift).
+The last partial window is discarded.
+
+\textbf{Sequence lengths per stage:} Stage~0--3 use $\texttt{seq\_len}=384$,
+Stages~4--5 use 512, and Stage~6 uses 768, matching the model's context length
+at each expansion.
+
+\subsection{Caching}
+
+All chunked datasets are serialized to disk as \texttt{.pkl} files keyed by
+\texttt{(dataset\_name, seq\_len)}.  Subsequent runs load directly from cache,
+avoiding re-tokenization.  Mixed-dataset caches use an MD5 hash of the
+sorted dataset--weight dictionary as part of the filename to ensure
+deterministic cache keys.
+
+\subsection{Difficulty Scoring}
+
+For curriculum-aware modes (\texttt{perplexity}, \texttt{adaptive}), each
+story is pre-scored using a composite difficulty metric computed by a
+reference model.  Scores are saved in \texttt{curriculum\_scores.npy} as a
+$(N, 5)$ array.  Chunk-level difficulties are derived by interpolating story
+scores to chunk positions based on their sequential ordering in the dataset.
+
+\subsection{Curriculum Filtering}
+
+In \texttt{adaptive} mode, only a fraction of chunks (sorted by difficulty) is
+exposed to the model at any time.  The \texttt{CompetenceScheduler} adjusts
+this fraction based on validation improvement rates:
+\begin{itemize}[nosep]
+  \item Strong improvement ($>$1\% loss decrease) $\to$ expand pool by +5\%
+  \item Moderate improvement ($>$0.1\%) $\to$ +2\%
+  \item Stagnation for 3 consecutive checks $\to$ forced +1\%
+\end{itemize}
+The expansion stages use \texttt{random} mode (no curriculum sorting), since
+the difficulty gradient is already encoded in the staged domain progression.
+
+\subsection{Anchor Injection}
+
+Regardless of curriculum mode, 10\% of training samples are drawn from an
+\emph{anchor pool} consisting of the easiest 5\% of chunks.  This provides
+continuous exposure to simple patterns and helps stabilize gradient norms.
+
+\subsection{Replay Pool Preparation}
+
+Each stage loads pre-cached chunks from earlier corpora as a replay buffer.
+Source chunks are loaded from the largest available cache file, then:
+\begin{itemize}[nosep]
+  \item Chunks longer than the target \texttt{seq\_len} are truncated.
+  \item Chunks shorter than the target are skipped (not zero-padded, to avoid
+        corrupting the loss signal).
+\end{itemize}
+Replay samples are drawn with probability \texttt{replay\_frac} at each batch
+construction, replacing a training chunk with one from the replay pool.

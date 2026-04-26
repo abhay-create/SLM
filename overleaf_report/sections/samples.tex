@@ -1,0 +1,91 @@
+\section{Generated Samples}
+
+The following samples are actual outputs from the model at different stages,
+generated with temperature 0.7 and top-$k$ = 30.  They demonstrate the
+progressive acquisition of stylistic and reasoning capabilities.
+
+\subsection{TinyStories Domain (Ages 3--5)}
+
+\begin{samplebox}[Prompt: ``Once upon a time, there was a little'']
+\textbf{Stage 0 (46M):}
+Once upon a time, there was a little girl who loved to explore. One day she
+went outside and saw a big white cloud in the sky. She thought it was the most
+beautiful cloud she had ever seen!
+
+\textbf{Stage 6 (100M):}
+Once upon a time, there was a little girl named Lily. She had a pretty dress
+that she loved to wear. One day, her mommy said she could go to the store to
+buy a new dress. Lily was very excited! At the store, Lily saw a beautiful
+dress that she liked\ldots
+\end{samplebox}
+
+Both stages produce coherent children's stories.  The Stage~6 model shows
+improved entity consistency (Lily is tracked throughout) and more structured
+narrative progression, despite being primarily trained on adult fiction in the
+later stages.
+
+\subsection{ROCStories Domain (Commonsense Reasoning)}
+
+\begin{samplebox}[Prompt: ``Sarah was excited for her birthday party.'']
+\textbf{Stage 2 (58M):}
+Sarah was excited for her birthday party. After they were ready, it was time
+to see who would win. They both looked at each other and both smiled.
+
+\textbf{Stage 5 (71M):}
+Sarah was excited for her birthday party. She ran to the party and said,
+``I'm so glad you are here, Sarah!'' But just as Sarah was about to enter the
+party, Sarah saw something strange. There was a big fire in the middle of the
+park. Everyone was scared\ldots
+\end{samplebox}
+
+Stage~5 shows longer, multi-event narratives with scene transitions and
+dialogue---capabilities gained through exposure to WritingPrompts.
+
+\subsection{WritingPrompts Domain (Adult Fiction)}
+
+\begin{samplebox}[Prompt: ``The year is 2157. Humanity has'']
+\textbf{Stage 0 (46M):}
+The year is 2157. Humanity has a lot of time and time. You have to eat more
+food and less. You have to be healthy and strong.
+
+\textbf{Stage 5 (71M):}
+The year is 2157. Humanity has been in this system for a long time, since the
+last humans have been there, and so they have been in their own universe.
+They have been in the wrong system for a long time\ldots
+\end{samplebox}
+
+\begin{samplebox}[Prompt: ``Death appeared before him and said'']
+\textbf{Stage 0 (46M):}
+Death appeared before him and said he was not in the end, he was just on the
+way in time. The bird was scared and flew away.
+
+\textbf{Stage 6 (100M):}
+Death appeared before him and said, ``Dear child, I am Death, and I have come
+for you.'' The child was startled and asked, ``But where am I then, Death?''
+``You are in the afterlife,'' Death said. ``You will find yourself. You have
+been there for a very long time\ldots''
+\end{samplebox}
+
+The progression is stark.  Stage~0 cannot handle sci-fi or abstract prompts,
+reverting to children's story patterns.  By Stage~6, the model produces
+dialogue, maintains a consistent narrative persona (Death as a character),
+and sustains multi-turn exchanges---though coherence degrades beyond
+$\sim$100 tokens.
+
+\subsection{Cross-Domain Analysis}
+
+\begin{table}[H]
+\centering\small
+\caption{Qualitative progression summary.}
+\begin{tabular}{lp{4cm}p{4cm}p{4cm}}
+\toprule
+\textbf{Aspect} & \textbf{Stage 0} & \textbf{Stage 3} & \textbf{Stage 6} \\
+\midrule
+Entity tracking    & Weak (characters change) & Moderate & Consistent across scenes \\
+Dialogue           & None                      & Basic quotes & Multi-turn exchanges \\
+Narrative length   & 2--3 sentences            & 5--8 sentences & 10+ sentences \\
+Domain vocabulary  & Children's only           & Mixed & Sci-fi, drama, abstract \\
+Factual content    & N/A                       & N/A & Some Wikipedia-like phrases \\
+\bottomrule
+\end{tabular}
+\end{table}

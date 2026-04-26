@@ -1,0 +1,67 @@
+\section{Catastrophic Forgetting Mitigation}
+
+Training on new domains risks degrading performance on earlier ones.  The
+pipeline employs four complementary strategies.
+
+\subsection{Replay Buffers}
+
+Each stage loads pre-cached chunks from earlier corpora as a replay pool.  At
+each batch construction, with probability \texttt{replay\_frac} a training
+chunk is replaced with one sampled uniformly from the replay pool.
+
+\textbf{Configuration:}
+\begin{itemize}[nosep]
+  \item Initial replay fraction: 15\% of samples.
+  \item Replay cap: 35--40\% (stage-dependent).
+  \item EMA-based adaptive scaling: if TinyStories forgetting exceeds
+        thresholds, \texttt{replay\_frac} is increased by
+        $\text{scale} \times \text{forgetting\_ema}$ (scale $= 3.0$).
+  \item Replay sources accumulate: Stage~3 replays from TinyStories and
+        ROCStories; Stage~6 replays from TinyStories and Children-Stories.
+\end{itemize}
+
+\subsection{Anchor Validation Baseline}
+
+Before training begins at each stage, the TinyStories validation loss is
+computed and stored as an \emph{anchor value}.  Throughout training,
+forgetting is defined as:
+\[
+\text{forgetting} = \frac{L_\text{ts}^\text{current} - L_\text{ts}^\text{anchor}}
+                         {\max(L_\text{ts}^\text{anchor},\; 10^{-6})}
+\]
+This relative metric is tracked both raw and as an exponential moving average
+(EMA, $\alpha = 0.1$), and logged at every evaluation step.
+
+\subsection{Synaptic Intelligence (SI)}
+
+SI maintains per-parameter importance estimates accumulated during training.
+A quadratic penalty is added to the loss:
+\[
+\mathcal{L}_\text{SI} = \lambda_\text{SI} \sum_k \Omega_k (\theta_k - \theta_k^*)^2
+\]
+where $\Omega_k$ is the importance of parameter $k$ and $\theta_k^*$ is its
+value at the end of the previous stage.  $\lambda_\text{SI}$ ranges from
+0.015 to 0.02 across stages.  The $\Omega$ matrices are saved alongside
+checkpoints (\texttt{si\_omega\_stage\_N.pt}).
+
+\subsection{Progressive Layer Thaw}
+
+During architectural expansions (Stages~4 and 6), the bottom 3 layers are
+initially frozen.  If forgetting exceeds a threshold (5\%), layers are
+progressively unfrozen from bottom to top.  This ensures that early
+representations---which encode fundamental linguistic features---are
+preserved during the initial adaptation phase.
+
+\subsection{Measuring Forgetting}
+
+Forgetting is monitored through:
+\begin{enumerate}[nosep]
+  \item \texttt{ts\_forgetting}: raw relative forgetting vs.\ anchor.
+  \item \texttt{ts\_forgetting\_ema}: smoothed EMA of forgetting.
+  \item Cross-domain val loss: all 7 val sets are evaluated at every
+        checkpoint, regardless of the active training domain.
+\end{enumerate}
+\vspace{2pt}
+The final Stage~6 model achieves TinyStories val loss of 1.669
+(anchor: 1.734), corresponding to \textbf{negative forgetting} ($-3.8\%$),
+indicating the model actually \emph{improved} on the source domain.

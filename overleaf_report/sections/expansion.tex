@@ -1,0 +1,89 @@
+\section{Model Architecture Evolution}
+\label{sec:expansion}
+
+The model grows through three types of architectural expansion, applied at
+specific stages.  Each expansion is validated by measuring cosine similarity
+of output logits between the pre- and post-expansion models.
+
+\subsection{Depth Expansion (Layer Cloning)}
+
+\textbf{Applied at:} Stages 2 (6$\to$9 layers) and 4 (9$\to$12 layers).
+
+Selected layers are deep-copied and appended to the model.  Symmetry-breaking
+Gaussian noise ($\sigma = 0.01$) is added to all weight matrices (not biases
+or norms) in the cloned layers.
+
+\textbf{Why symmetry breaking is mandatory.}
+Without noise, cloned layers produce identical gradients and learn identical
+functions, providing no capacity benefit.  The noise ensures gradient
+differentiation from the first update.
+
+\textbf{Clone selection.}
+Layers from the upper half of the network are cloned (e.g., layers [3,4,5] for
+6$\to$9).  Upper layers capture more task-specific features, so cloning them
+provides useful initialization for learning new domain representations.
+
+\textbf{This is not function-preserving.}
+Appending active Transformer blocks changes the model output.  Validation shows
+cosine similarity $\approx 0.92$ after depth expansion---indicating significant
+but controlled drift.
+
+\subsection{FFN Widening}
+
+\textbf{Applied at:} Stage 6 ($d_\text{ff}$: 2048$\to$3584).
+
+The FFN is widened with function-preserving initialization:
+\begin{itemize}[nosep]
+  \item $W_\text{gate}$ and $W_\text{up}$: old rows copied, new rows initialized
+        with small random values ($\sigma = 0.02/\sqrt{2 \cdot n_\text{layers}}$).
+  \item $W_\text{down}$: old columns copied, new columns set to \textbf{zero}.
+\end{itemize}
+The zero-initialized $W_\text{down}$ columns ensure the new neurons are
+\emph{dormant} at initialization---they contribute nothing to the output.
+This makes the expansion \textbf{exactly function-preserving}:
+$f(x; \theta_\text{expanded}) = f(x; \theta_\text{original})$ for all $x$.
+
+\subsection{Context Length Extension}
+
+\textbf{Applied at:} Stages 2 (256$\to$384), 4 (384$\to$512), and 6
+(512$\to$768).
+
+For learnable positional embeddings, the embedding matrix
+$\mathbf{P} \in \mathbb{R}^{L_\text{old} \times d}$ is extended to
+$\mathbf{P}' \in \mathbb{R}^{L_\text{new} \times d}$ via 1D linear
+interpolation (see Section~\ref{sec:posenc}).  This is approximately
+function-preserving for positions within the original range.
+
+\subsection{Why Changes Are Staged}
+
+All three expansion types could be applied simultaneously, but staging them
+provides several benefits:
+\begin{enumerate}[nosep]
+  \item \textbf{Controlled drift.}  Each expansion introduces a bounded amount
+        of output perturbation.  The training loop can recover from one change
+        before the next is applied.
+  \item \textbf{Diagnostic clarity.}  If training diverges or forgetting spikes,
+        the cause can be attributed to the specific expansion.
+  \item \textbf{Curriculum alignment.}  Each expansion is paired with a new
+        domain that benefits from the added capacity (e.g., longer context for
+        longer stories, wider FFN for richer vocabulary).
+\end{enumerate}
+
+\begin{table}[H]
+\centering\small
+\caption{Architecture at each stage.}
+\begin{tabular}{clcccc}
+\toprule
+\textbf{Stage} & \textbf{Expansion} & \textbf{Layers} & $d_\textbf{ff}$ &
+\textbf{ctx} & \textbf{Params} \\
+\midrule
+0 & (baseline)                   & 6  & 2048 & 256 & 45.8M \\
+2 & +3 layers, ctx 384           & 9  & 2048 & 384 & 58.4M \\
+3 & (data-only)                  & 9  & 2048 & 384 & 58.4M \\
+4 & +3 layers, ctx 512           & 12 & 2048 & 512 & 71.1M \\
+5 & (data-only)                  & 12 & 2048 & 512 & 71.1M \\
+6 & FFN 3584, ctx 768            & 12 & 3584 & 768 & 99.5M \\
+\bottomrule
+\end{tabular}
+\label{tab:stages}
+\end{table}

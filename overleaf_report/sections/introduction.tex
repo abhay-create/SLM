@@ -1,0 +1,39 @@
+\section{Introduction}
+
+Training large language models from scratch requires enormous compute budgets.
+An alternative strategy is \emph{staged expansion}: begin with a small,
+well-trained model and systematically grow its capacity while introducing
+progressively harder data.  This report documents such a pipeline, growing a
+decoder-only Transformer from 46M parameters (6 layers, $d_\text{ff}=2048$,
+context 256) to 100M parameters (12 layers, $d_\text{ff}=3584$, context 768)
+across six stages.
+
+\textbf{Key design principles:}
+\begin{enumerate}[nosep]
+  \item \textbf{Curriculum-driven data.}  Each stage introduces a new domain
+        at a controlled mixing ratio, moving from simple children's stories to
+        adult fiction.
+  \item \textbf{Function-preserving expansion.}  Architectural changes
+        (depth, width, context) use initialization strategies that minimize
+        initial output drift from the source model.
+  \item \textbf{Anti-forgetting suite.}  Replay buffers, Synaptic Intelligence
+        regularization, and progressive layer thawing prevent catastrophic
+        forgetting of earlier domains.
+\end{enumerate}
+
+The six-stage roadmap is:
+\begin{center}
+\small
+\begin{tabular}{clll}
+\toprule
+\textbf{Stage} & \textbf{Goal} & \textbf{Architecture} & \textbf{New Domain} \\
+\midrule
+0 & Baseline          & 6L / 2048 / 256 (46M)   & TinyStories \\
+2 & Causal chains     & 9L / 2048 / 384 (58M)   & ROCStories + SimpleStories \\
+3 & Longer narrative  & 9L / 2048 / 384 (58M)   & Children-Stories \\
+4 & Non-fiction style & 12L / 2048 / 512 (71M)  & SimpleWiki \\
+5 & Prompt-response   & 12L / 2048 / 512 (71M)  & WritingPrompts (easy) \\
+6 & Adult fiction     & 12L / 3584 / 768 (100M) & WritingPrompts (full) \\
+\bottomrule
+\end{tabular}
+\end{center}

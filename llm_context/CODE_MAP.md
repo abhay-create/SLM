@@ -32,6 +32,7 @@ Use this file to avoid re-reading the entire repo. Verify exact source before ed
 - `docs/benchmarking.md`: evaluation and monitoring recommendations.
 - `docs/logging_and_benchmarking.md`: exact logging schema, artifacts, and publication checklist.
 - `scripts/summarize_benchmarks.py`: aggregates `logs/stage*.csv` files into `docs/benchmark_summary.md` and optional JSON.
+- `scripts/generate_responses.py`: multi-prompt, multi-checkpoint generation script. Loads all `*best.pt` models, generates text with configurable settings (temperature, top_k, max_tokens), saves JSON + Markdown report to `Logs/generations/`.
 
 ## LLM Context System
 

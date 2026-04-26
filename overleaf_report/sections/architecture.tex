@@ -1,0 +1,41 @@
+\section{Base Model Architecture}
+
+The SLM is a decoder-only Transformer with the following design:
+
+\begin{table}[H]
+\centering\small
+\caption{Base model (Stage~0) architecture.}
+\begin{tabular}{ll}
+\toprule
+\textbf{Component} & \textbf{Specification} \\
+\midrule
+Vocabulary          & 50{,}000 BPE tokens \\
+$d_\text{model}$    & 512 \\
+Layers ($n_\text{layers}$) & 6 \\
+Heads ($n_\text{heads}$)   & 8 (head dim = 64) \\
+FFN width ($d_\text{ff}$)  & 2{,}048 \\
+Context length      & 256 \\
+Activation          & SwiGLU \\
+Normalization       & RMSNorm (pre-norm) \\
+Positional encoding & Learnable embeddings \\
+Weight tying        & Enabled (tok\_emb = lm\_head) \\
+Dropout             & 0.0 \\
+Parameters          & 45.8M \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{SwiGLU FFN.}
+Each layer uses a gated feed-forward network:
+$\text{FFN}(x) = W_\text{down} \cdot [\text{SiLU}(W_\text{gate} \cdot x) \odot (W_\text{up} \cdot x)]$,
+where $W_\text{gate}, W_\text{up} \in \mathbb{R}^{d_\text{ff} \times d}$ and
+$W_\text{down} \in \mathbb{R}^{d \times d_\text{ff}}$.
+
+\textbf{KV Cache.}
+For inference, the model implements a key--value cache that pre-fills the prompt
+causally and then generates one token at a time.  If the total length exceeds
+\texttt{ctx\_len}, it falls back to uncached sliding-window generation.
+
+\textbf{Weight tying.}
+The token embedding and LM head share the same weight matrix, reducing the
+parameter count by $\sim$25.6M and acting as a regularizer.
